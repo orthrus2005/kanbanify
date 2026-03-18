@@ -1,0 +1,181 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+}
+
+/* ===== Kanbanify polish (custom utilities + animations) ===== */
+:root {
+  --kb-shadow: 0 1px 0 rgba(15, 23, 42, 0.05), 0 10px 30px rgba(15, 23, 42, 0.08);
+  --kb-shadow-hover: 0 1px 0 rgba(15, 23, 42, 0.06), 0 18px 50px rgba(15, 23, 42, 0.14);
+}
+
+@keyframes kb-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes kb-pop {
+  from { opacity: 0; transform: scale(0.985); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes kb-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+/* Board background */
+.kb-board {
+  position: relative;
+  background:
+    radial-gradient(1200px 400px at 10% -10%, rgba(239, 68, 68, 0.18), transparent 55%),
+    radial-gradient(800px 320px at 90% 0%, rgba(244, 63, 94, 0.14), transparent 55%),
+    radial-gradient(900px 360px at 50% 120%, rgba(99, 102, 241, 0.10), transparent 55%);
+}
+.kb-board::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+  background-size: 18px 18px;
+  opacity: 0.18;
+  mask-image: radial-gradient(circle at 50% 30%, black 0%, transparent 70%);
+}
+
+/* Column */
+.kb-column {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 18px;
+  padding: 14px;
+  background: rgba(248, 250, 252, 0.75);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--kb-shadow);
+  animation: kb-fade-up 220ms ease-out both;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.kb-column:hover {
+  box-shadow: var(--kb-shadow-hover);
+  transform: translateY(-1px);
+}
+
+.kb-dropzone {
+  border-radius: 14px;
+  padding: 6px;
+  transition: background 160ms ease, box-shadow 160ms ease, outline-color 160ms ease;
+}
+.kb-dropzone--over {
+  background: rgba(239, 68, 68, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.22);
+}
+.kb-empty {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  color: rgba(100, 116, 139, 0.9);
+  font-size: 12px;
+  user-select: none;
+}
+
+/* Task card */
+.kb-card {
+  background: #fff;
+  padding: 14px 14px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+  cursor: grab;
+  user-select: none;
+  will-change: transform;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease, filter 140ms ease;
+  animation: kb-fade-up 180ms ease-out both;
+}
+.kb-card:hover {
+  border-color: rgba(239, 68, 68, 0.40);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
+  transform: translateY(-1px);
+}
+.kb-card:active {
+  cursor: grabbing;
+  transform: translateY(0px) scale(0.995);
+}
+.kb-card--dragging {
+  filter: saturate(0.9);
+}
+.kb-card--overlay {
+  cursor: grabbing;
+  border-color: rgba(239, 68, 68, 0.55);
+  box-shadow: 0 18px 55px rgba(15, 23, 42, 0.22);
+  transform: rotate(0.2deg);
+  animation: kb-pop 120ms ease-out both;
+}
+
+/* Add column button */
+.kb-add-column {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border: 2px dashed rgba(148, 163, 184, 0.50);
+  color: rgba(100, 116, 139, 0.9);
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.75), rgba(248, 250, 252, 0.60));
+  backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease, background 160ms ease;
+}
+.kb-add-column:hover {
+  border-color: rgba(239, 68, 68, 0.55);
+  color: rgba(239, 68, 68, 1);
+  box-shadow: 0 16px 45px rgba(239, 68, 68, 0.12);
+  transform: translateY(-1px);
+}
+.kb-add-column:active {
+  transform: translateY(0px) scale(0.995);
+}
+.kb-add-column::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 18px;
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.0), rgba(239, 68, 68, 0.20), rgba(239, 68, 68, 0.0));
+  background-size: 200% 200%;
+  opacity: 0;
+  transition: opacity 180ms ease;
+  z-index: -1;
+}
+.kb-add-column:hover::before {
+  opacity: 1;
+  animation: kb-shimmer 900ms linear infinite;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .kb-column, .kb-card, .kb-card--overlay {
+    animation: none !important;
+  }
+  .kb-column:hover, .kb-card:hover, .kb-add-column:hover {
+    transform: none !important;
+  }
+}
+
+/* ===== Scrollbar ===== */
+.custom-scrollbar::-webkit-scrollbar {
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #f87171; /* red-400 */
+  border-radius: 10px;
+  transition: background 0.3s;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #ef4444; /* red-500 */
+}
