@@ -163,6 +163,21 @@
   }
 }
 
+/* DnD handle touch behavior (keeps scrolling responsive) */
+.kb-dnd-handle {
+  touch-action: none;
+}
+
+/* Mobile polish */
+@media (max-width: 640px) {
+  .kb-column {
+    padding: 12px;
+  }
+  .kb-card {
+    padding: 12px 12px 10px;
+  }
+}
+
 /* ===== Scrollbar ===== */
 .custom-scrollbar::-webkit-scrollbar {
   height: 6px;
