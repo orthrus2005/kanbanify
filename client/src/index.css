@@ -1,0 +1,374 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --kb-bg: #f3f4f6;
+    --kb-surface: rgba(255, 255, 255, 0.82);
+    --kb-surface-strong: rgba(255, 255, 255, 0.94);
+    --kb-border: rgba(15, 23, 42, 0.08);
+    --kb-text: #172033;
+    --kb-muted: #66758f;
+    --kb-accent: #2563eb;
+    --kb-accent-soft: rgba(37, 99, 235, 0.12);
+    --kb-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    --kb-shadow-strong: 0 18px 50px rgba(15, 23, 42, 0.14);
+    --kb-dark: #1d2125;
+    --kb-dark-surface: #282e33;
+    --kb-dark-border: rgba(255, 255, 255, 0.08);
+    --kb-dark-muted: #9fadbc;
+  }
+
+  html {
+    @apply h-full;
+  }
+
+  body {
+    @apply min-h-full antialiased;
+    background:
+      radial-gradient(1200px 520px at 0% 0%, rgba(59, 130, 246, 0.16), transparent 55%),
+      radial-gradient(900px 440px at 100% 0%, rgba(16, 185, 129, 0.12), transparent 50%),
+      linear-gradient(180deg, #eef3f8 0%, #f6f8fb 45%, #eef2f7 100%);
+    color: var(--kb-text);
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+}
+
+@keyframes kb-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes kb-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes kb-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+.kb-board {
+  position: relative;
+  background:
+    radial-gradient(780px 320px at 6% 0%, rgba(59, 130, 246, 0.12), transparent 55%),
+    radial-gradient(720px 340px at 92% 4%, rgba(16, 185, 129, 0.14), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.28));
+}
+
+.kb-board::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.3) 0.8px, transparent 0.8px);
+  background-size: 18px 18px;
+  opacity: 0.32;
+  mask-image: linear-gradient(180deg, black 18%, transparent 96%);
+}
+
+.kb-shell {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.56));
+  backdrop-filter: blur(24px);
+}
+
+.kb-column {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 20px;
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(245, 247, 250, 0.9));
+  box-shadow: var(--kb-shadow);
+  animation: kb-fade-up 120ms ease-out both;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.kb-column:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--kb-shadow-strong);
+}
+
+.kb-dropzone {
+  border-radius: 16px;
+  padding: 4px;
+  min-height: 72px;
+  transition: background 70ms ease, box-shadow 70ms ease;
+}
+
+.kb-dropzone--over {
+  background: rgba(37, 99, 235, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.18);
+}
+
+.kb-empty {
+  margin-top: 4px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  color: var(--kb-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.kb-card {
+  background: var(--kb-surface-strong);
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+  cursor: grab;
+  user-select: none;
+  transition: transform 70ms ease, box-shadow 70ms ease, border-color 70ms ease;
+  animation: kb-fade-up 100ms ease-out both;
+}
+
+.kb-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.2);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.1);
+}
+
+.kb-card:active {
+  cursor: grabbing;
+}
+
+.kb-card--overlay {
+  cursor: grabbing;
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.18);
+  transform: none;
+  animation: kb-pop 70ms ease-out both;
+}
+
+.kb-card--inbox {
+  background: rgba(27, 31, 38, 0.94);
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.kb-card--inbox:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
+}
+
+.kb-add-column {
+  position: relative;
+  overflow: hidden;
+  border: 1px dashed rgba(37, 99, 235, 0.3);
+  color: #33507e;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(239, 246, 255, 0.72));
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 25px rgba(15, 23, 42, 0.06);
+  transition: transform 80ms ease, border-color 80ms ease, box-shadow 80ms ease;
+}
+
+.kb-add-column:hover {
+  border-color: rgba(37, 99, 235, 0.45);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.12);
+}
+
+.kb-add-column::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 20px;
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0), rgba(37, 99, 235, 0.14), rgba(16, 185, 129, 0.08), rgba(37, 99, 235, 0));
+  background-size: 200% 200%;
+  opacity: 0;
+  transition: opacity 80ms ease;
+}
+
+.kb-add-column:hover::before {
+  opacity: 1;
+  animation: kb-shimmer 1100ms linear infinite;
+}
+
+.kb-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.66));
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: var(--kb-shadow);
+  backdrop-filter: blur(18px);
+}
+
+.kb-modal {
+  background: var(--kb-dark);
+  color: #f1f5f9;
+  border: 1px solid var(--kb-dark-border);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.45);
+}
+
+.kb-edit-modal {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  box-shadow: 0 32px 80px rgba(15, 23, 42, 0.2);
+  backdrop-filter: blur(20px);
+}
+
+.kb-modal-surface {
+  background: var(--kb-dark-surface);
+  border: 1px solid var(--kb-dark-border);
+}
+
+.kb-modal-input {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f8fafc;
+  outline: none;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.kb-modal-input:focus {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.kb-modal-input::placeholder {
+  color: rgba(159, 173, 188, 0.82);
+}
+
+.kb-edit-input {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: #fff;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.kb-edit-input:focus {
+  border-color: rgba(59, 130, 246, 0.45);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+}
+
+.kb-edit-input::placeholder {
+  color: #94a3b8;
+}
+
+.kb-edit-modal aside {
+  min-width: 0;
+}
+
+.kb-inbox-column {
+  min-height: 640px;
+}
+
+.kb-inbox-popover {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.kb-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.kb-action-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.kb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kb-dnd-handle {
+  touch-action: none;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, 0.12);
+  border-radius: 999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.35);
+  border-radius: 999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(51, 65, 85, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kb-column,
+  .kb-card,
+  .kb-card--overlay {
+    animation: none !important;
+  }
+
+  .kb-column:hover,
+  .kb-card:hover,
+  .kb-add-column:hover {
+    transform: none !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  .kb-modal {
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .kb-column {
+    width: min(92vw, 320px);
+  }
+
+  .kb-inbox-column {
+    width: min(92vw, 320px);
+  }
+
+  .kb-edit-modal {
+    border-radius: 24px;
+  }
+
+  .kb-edit-input[type="datetime-local"] {
+    min-width: 0;
+    font-size: 16px;
+  }
+}
