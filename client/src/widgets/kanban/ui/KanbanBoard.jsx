@@ -9,6 +9,7 @@ import { TaskCard } from '../../../entities/task/ui/TaskCard';
 
 const parseDndId = (value) => {
   if (typeof value !== 'string') return { type: '', id: '' };
+
   const [type, ...rest] = value.split(':');
   return { type, id: rest.join(':') };
 };
@@ -69,46 +70,46 @@ export const KanbanBoard = () => {
     }
   };
 
-  const handleAddColumn = (event) => {
+  const handleAddColumn = async (event) => {
     event.preventDefault();
     if (!columnTitle.trim()) return;
 
-    addColumn(currentBoardId, columnTitle.trim());
+    await addColumn(currentBoardId, columnTitle.trim());
     setColumnTitle('');
     setIsAddingColumn(false);
   };
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <section className="kb-board flex h-full min-h-[calc(100vh-24px)] flex-col overflow-hidden">
-        <header className="relative z-[1] border-b border-white/40 bg-white/40 px-5 py-4 backdrop-blur-xl sm:px-6">
+      <section className="kb-board flex h-full min-h-0 flex-col overflow-hidden">
+        <header className="relative z-[1] border-b border-white/40 bg-white/40 px-4 py-3 backdrop-blur-xl sm:px-6 sm:py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
-              <h2 className="truncate text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+              <h2 className="truncate text-xl font-black tracking-tight text-slate-900 sm:text-3xl">
                 {currentBoard?.title || 'Текущая доска'}
               </h2>
             </div>
           </div>
         </header>
 
-        <div className="custom-scrollbar relative z-[1] flex-1 overflow-x-auto overflow-y-hidden px-4 pb-6 pt-5 sm:px-6">
-          <div className="flex h-full min-w-max items-start gap-5">
+        <div className="custom-scrollbar relative z-[1] flex-1 overflow-auto px-3 pb-4 pt-3 sm:px-6 sm:pb-6 sm:pt-5">
+          <div className="flex min-h-full min-w-max items-start gap-3 sm:gap-5">
             <InboxColumn />
 
             {columns.map((column) => (
               <Column key={column.id} column={column} tasks={tasks.filter((task) => task.column_id === column.id)} />
             ))}
 
-            <div className="w-[320px] shrink-0">
+            <div className="w-[280px] shrink-0 sm:w-[320px]">
               {!isAddingColumn ? (
                 <button
                   onClick={() => setIsAddingColumn(true)}
-                  className="kb-add-column flex min-h-[72px] w-full items-center gap-3 rounded-[20px] px-5 text-left"
+                  className="kb-add-column flex min-h-[72px] w-full items-center gap-3 rounded-[20px] px-4 text-left sm:px-5"
                 >
                   <div className="rounded-2xl bg-white/80 p-2 text-blue-700 shadow-sm">
                     <Plus size={18} />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-sm font-bold">Добавить колонку</div>
                     <div className="mt-1 text-sm text-slate-500">Новый этап для задач</div>
                   </div>
@@ -123,7 +124,7 @@ export const KanbanBoard = () => {
                     placeholder="Например, На проверке"
                     className="mb-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                   />
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <button type="submit" className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">
                       Создать
                     </button>

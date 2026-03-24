@@ -135,9 +135,9 @@ export const InboxColumn = () => {
     setIsBackgroundOpen(false);
   };
 
-  const handleAddIdea = () => {
+  const handleAddIdea = async () => {
     if (!newTitle.trim()) return;
-    addInboxIdea(newTitle.trim());
+    await addInboxIdea(newTitle.trim());
     setNewTitle('');
   };
 

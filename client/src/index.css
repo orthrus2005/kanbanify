@@ -27,6 +27,7 @@
 
   body {
     @apply min-h-full antialiased;
+    overflow-x: hidden;
     background:
       radial-gradient(1200px 520px at 0% 0%, rgba(59, 130, 246, 0.16), transparent 55%),
       radial-gradient(900px 440px at 100% 0%, rgba(16, 185, 129, 0.12), transparent 50%),
@@ -356,15 +357,27 @@
 
 @media (max-width: 640px) {
   .kb-column {
-    width: min(92vw, 320px);
+    width: min(88vw, 320px);
   }
 
   .kb-inbox-column {
-    width: min(92vw, 320px);
+    width: min(88vw, 320px);
+    min-height: 560px;
   }
 
   .kb-edit-modal {
     border-radius: 24px;
+  }
+
+  .kb-inbox-popover {
+    position: fixed !important;
+    left: 12px !important;
+    right: 12px !important;
+    top: auto !important;
+    bottom: 12px !important;
+    width: auto !important;
+    max-height: min(72vh, 560px);
+    overflow-y: auto;
   }
 
   .kb-edit-input[type="datetime-local"] {

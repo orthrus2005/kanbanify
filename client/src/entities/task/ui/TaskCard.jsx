@@ -2,9 +2,41 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { AlignLeft, ArchiveRestore, CalendarDays, Clock3, Copy, MoreHorizontal, Tag, Trash2, X } from 'lucide-react';
+import {
+  AlignLeft,
+  ArchiveRestore,
+  CalendarDays,
+  Clock3,
+  Copy,
+  MoreHorizontal,
+  PaintBucket,
+  Tag,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useBoardStore } from '../../board/model/store';
 import { useConfirmStore } from '../../../shared/model/confirmStore';
+
+const CARD_COLORS = ['#334155', '#2563eb', '#059669', '#d97706', '#e11d48', '#7c3aed'];
+
+const hexToRgba = (hex, alpha) => {
+  if (!hex || !hex.startsWith('#')) return `rgba(255, 255, 255, ${alpha})`;
+
+  const normalized = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
+  const red = parseInt(normalized.slice(1, 3), 16);
+  const green = parseInt(normalized.slice(3, 5), 16);
+  const blue = parseInt(normalized.slice(5, 7), 16);
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+};
+
+const getCardStyle = (color, transform, isDragging, isOverlay) => ({
+  transform: isOverlay ? undefined : CSS.Translate.toString(transform),
+  opacity: isDragging && !isOverlay ? 0.35 : 1,
+  borderColor: color || undefined,
+  background: color ? `linear-gradient(180deg, ${hexToRgba(color, 0.22)} 0%, rgba(255, 255, 255, 0.97) 82%)` : undefined,
+  boxShadow: color ? `0 14px 30px rgba(15, 23, 42, 0.1), inset 0 0 0 1px ${hexToRgba(color, 0.2)}` : undefined,
+});
 
 export const TaskCard = ({ task, isOverlay = false, dndId }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -13,6 +45,7 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
     title: task.title,
     desc: task.description || '',
     date: task.due_date?.slice(0, 16) || '',
+    color: task.color || '',
   });
 
   const { columns, updateTask, deleteTask, archiveTask, unarchiveTask } = useBoardStore();
@@ -31,8 +64,9 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
       title: task.title,
       desc: task.description || '',
       date: task.due_date?.slice(0, 16) || '',
+      color: task.color || '',
     });
-  }, [task.id, task.title, task.description, task.due_date]);
+  }, [task.id, task.title, task.description, task.due_date, task.color]);
 
   useEffect(() => {
     if (isDragging) dragFlagRef.current = true;
@@ -84,10 +118,7 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
     };
   }, [isModalOpen]);
 
-  const style = {
-    transform: isOverlay ? undefined : CSS.Translate.toString(transform),
-    opacity: isDragging && !isOverlay ? 0.35 : 1,
-  };
+  const style = getCardStyle(task.color, transform, isDragging, isOverlay);
 
   const columnTitle = useMemo(
     () => columns.find((column) => column.id === task.column_id)?.title ?? 'Без колонки',
@@ -97,6 +128,22 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
   const dueLabel = task.due_date
     ? new Date(task.due_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
     : null;
+
+  const baseChipStyle = task.color
+    ? {
+        backgroundColor: hexToRgba(task.color, 0.14),
+        color: '#334155',
+        border: `1px solid ${hexToRgba(task.color, 0.18)}`,
+      }
+    : undefined;
+
+  const dueChipStyle = task.color
+    ? {
+        backgroundColor: hexToRgba(task.color, 0.2),
+        color: '#1d4ed8',
+        border: `1px solid ${hexToRgba(task.color, 0.22)}`,
+      }
+    : undefined;
 
   const openEditModal = () => {
     if (dragFlagRef.current) {
@@ -108,11 +155,12 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
-    updateTask(task.id, {
+  const handleSave = async () => {
+    await updateTask(task.id, {
       title: edit.title.trim() || task.title,
       description: edit.desc,
       due_date: edit.date || null,
+      color: edit.color || null,
     });
     setIsModalOpen(false);
   };
@@ -129,12 +177,12 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="mb-3 flex flex-wrap gap-2">
-                      <span className="kb-chip bg-slate-100 text-slate-700">
+                      <span className="kb-chip bg-slate-100 text-slate-700" style={baseChipStyle}>
                         <Tag size={12} />
                         {columnTitle}
                       </span>
                       {edit.date ? (
-                        <span className="kb-chip bg-blue-100 text-blue-700">
+                        <span className="kb-chip bg-blue-100 text-blue-700" style={dueChipStyle}>
                           <CalendarDays size={12} />
                           {new Date(edit.date).toLocaleString('ru-RU', {
                             day: 'numeric',
@@ -189,7 +237,33 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
                   <aside className="space-y-4">
                     <div className="rounded-3xl border border-slate-200 bg-slate-50/85 p-5">
                       <div className="mb-2 text-sm font-semibold text-slate-700">Колонка</div>
-                      <div className="text-sm break-words text-slate-500">{columnTitle}</div>
+                      <div className="break-words text-sm text-slate-500">{columnTitle}</div>
+                    </div>
+
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50/85 p-5">
+                      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <PaintBucket size={15} />
+                        Цвет карточки
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {CARD_COLORS.map((color) => (
+                          <button
+                            key={color}
+                            type="button"
+                            onClick={() => setEdit((state) => ({ ...state, color }))}
+                            className={`h-11 rounded-2xl border ${edit.color === color ? 'border-slate-900' : 'border-slate-200'}`}
+                            style={{ backgroundColor: color }}
+                            aria-label={`Выбрать цвет ${color}`}
+                          />
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEdit((state) => ({ ...state, color: '' }))}
+                        className="mt-3 text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                      >
+                        Сбросить цвет
+                      </button>
                     </div>
 
                     <label className="block rounded-3xl border border-slate-200 bg-slate-50/85 p-5">
@@ -309,9 +383,11 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
 
         <div {...(isOverlay ? {} : listeners)} {...(isOverlay ? {} : attributes)} className={isOverlay ? '' : 'kb-dnd-handle'}>
           <div className="mb-3 flex flex-wrap items-center gap-2 pr-8">
-            <span className="kb-chip bg-slate-100 text-slate-600">{columnTitle}</span>
+            <span className="kb-chip bg-slate-100 text-slate-600" style={baseChipStyle}>
+              {columnTitle}
+            </span>
             {dueLabel ? (
-              <span className="kb-chip bg-blue-100 text-blue-700">
+              <span className="kb-chip bg-blue-100 text-blue-700" style={dueChipStyle}>
                 <Clock3 size={12} />
                 {dueLabel}
               </span>
@@ -321,9 +397,9 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
           <h4 className="pr-8 text-sm font-bold leading-6 text-slate-800">{task.title}</h4>
 
           {task.description ? (
-            <p className="mt-2 text-sm leading-6 text-slate-500">{task.description}</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{task.description}</p>
           ) : (
-            <p className="mt-2 text-sm text-slate-400">Нажмите, чтобы добавить описание и срок.</p>
+            <p className="mt-2 text-sm text-slate-500">Нажмите, чтобы добавить описание, цвет и срок.</p>
           )}
         </div>
       </div>
