@@ -367,10 +367,15 @@ export const InboxIdeaCard = ({ idea, showArchived = false, isOverlay = false, d
 
   return (
     <>
-      <div ref={setNodeRef} style={style} onClick={openModal} className={`kb-card kb-card--inbox group relative ${isOverlay ? 'kb-card--overlay' : ''}`}>
+      <div
+        ref={setNodeRef}
+        style={style}
+        onClick={openModal}
+        className={`kb-card kb-card--inbox group relative ${isOverlay ? 'kb-card--overlay' : ''}`}
+      >
         {!isOverlay ? (
           <div ref={menuRef} className="absolute right-2 top-2 z-20">
-            <button onClick={(event) => { event.stopPropagation(); setIsMenuOpen((value) => !value); }} className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 opacity-100 transition hover:bg-white/10 hover:text-white">
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsMenuOpen((value) => !value); }} className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 opacity-100 transition hover:bg-white/10 hover:text-white">
               <MoreHorizontal size={16} />
             </button>
             {isMenuOpen ? (

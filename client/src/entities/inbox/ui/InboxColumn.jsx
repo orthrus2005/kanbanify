@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useDroppable } from '@dnd-kit/core';
 import { Archive, Check, ChevronRight, ImagePlus, Inbox, ListFilter, Menu, PaintBucket, Plus, Settings, SlidersHorizontal, X } from 'lucide-react';
 import { useBoardStore } from '../../board/model/store';
@@ -9,19 +10,19 @@ const photoPresets = [
     id: 'glacier',
     label: 'Ледник',
     value:
-      'linear-gradient(180deg, rgba(18,24,38,0.14), rgba(18,24,38,0.46)), url(https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=900&q=80)',
+      'linear-gradient(180deg, rgba(18,24,38,0.12), rgba(18,24,38,0.34)), url(https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2400&q=92)',
   },
   {
     id: 'canyon',
     label: 'Каньон',
     value:
-      'linear-gradient(180deg, rgba(18,24,38,0.1), rgba(18,24,38,0.42)), url(https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80)',
+      'linear-gradient(180deg, rgba(18,24,38,0.08), rgba(18,24,38,0.32)), url(https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=2400&q=92)',
   },
   {
     id: 'ocean',
     label: 'Океан',
     value:
-      'linear-gradient(180deg, rgba(18,24,38,0.1), rgba(18,24,38,0.45)), url(https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80)',
+      'linear-gradient(180deg, rgba(18,24,38,0.08), rgba(18,24,38,0.34)), url(https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2400&q=92)',
   },
 ];
 
@@ -50,7 +51,7 @@ const getDueBucket = (item) => {
   return 'future';
 };
 
-export const InboxColumn = () => {
+export const InboxColumn = ({ expanded = false, contained = false }) => {
   const { inboxIdeas, archivedInboxIdeas, addInboxIdea } = useBoardStore();
   const { setNodeRef, isOver } = useDroppable({ id: 'inbox' });
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -71,9 +72,43 @@ export const InboxColumn = () => {
   const menuRef = useRef(null);
   const filterRef = useRef(null);
   const backgroundRef = useRef(null);
+  const filterButtonRef = useRef(null);
+  const menuButtonRef = useRef(null);
   const fileInputRef = useRef(null);
 
   const selectedBackground = customBackground || backgroundValue;
+  const getPopoverStyle = (anchorRef, width) => {
+    if (typeof window === 'undefined') return {};
+
+    const rect = anchorRef.current?.getBoundingClientRect();
+    const safeGap = 16;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const finalWidth = Math.min(width, viewportWidth - safeGap * 2);
+
+    if (!rect) {
+      return {
+        position: 'fixed',
+        top: `${expanded ? 148 : 112}px`,
+        left: `${safeGap}px`,
+        width: `${finalWidth}px`,
+        zIndex: 1400,
+      };
+    }
+
+    const preferredLeft = rect.right + 14;
+    const fallbackLeft = Math.max(safeGap, rect.left - finalWidth - 14);
+    const left = preferredLeft + finalWidth + safeGap <= viewportWidth ? preferredLeft : fallbackLeft;
+    const top = Math.min(Math.max(rect.top, safeGap), Math.max(safeGap, viewportHeight - 520));
+
+    return {
+      position: 'fixed',
+      top: `${top}px`,
+      left: `${left}px`,
+      width: `${finalWidth}px`,
+      zIndex: 1400,
+    };
+  };
 
   useEffect(() => {
     const handleOutside = (event) => {
@@ -141,11 +176,42 @@ export const InboxColumn = () => {
     setNewTitle('');
   };
 
+  const outerClassName = expanded
+    ? 'kb-inbox-column kb-inbox-column--expanded h-full w-full min-w-0 rounded-[30px] border border-white/12 shadow-[0_28px_80px_rgba(15,23,42,0.22)]'
+    : contained
+      ? 'kb-inbox-column kb-inbox-column--contained h-full w-full min-w-0 rounded-[26px] border border-white/10 shadow-[0_20px_44px_rgba(15,23,42,0.16)]'
+      : 'kb-inbox-column kb-inbox-column--default w-[320px] shrink-0 rounded-[24px] border border-slate-900/10 shadow-[0_30px_70px_rgba(15,23,42,0.2)]';
+
+  const backgroundRadiusClass = expanded ? 'rounded-[30px]' : contained ? 'rounded-[26px]' : 'rounded-[24px]';
+  const overlayClassName = expanded
+    ? 'flex h-full min-h-0 items-start justify-center rounded-[30px] bg-slate-950/10 p-4 pt-6 sm:p-6 sm:pt-8'
+    : contained
+      ? 'flex h-full min-h-0 flex-col rounded-[26px] bg-slate-950/14 p-3'
+      : 'rounded-[24px] bg-slate-950/18 p-3';
+  const cardClassName = expanded
+    ? 'mx-auto flex min-h-0 w-full max-w-[760px] flex-1 flex-col rounded-[26px] bg-slate-50/96 p-4 shadow-lg shadow-slate-900/10 sm:p-5'
+    : contained
+      ? 'flex min-h-0 flex-1 flex-col rounded-[22px] bg-slate-50/96 p-3 shadow-lg shadow-slate-900/10'
+      : 'rounded-[22px] bg-slate-50/96 p-3 shadow-lg shadow-slate-900/10';
+  const listClassName = expanded
+    ? 'custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 transition'
+    : contained
+      ? 'custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 transition'
+      : 'custom-scrollbar max-h-[55vh] space-y-2 overflow-y-auto pr-1 transition';
+
   return (
-    <div className="kb-inbox-column relative w-[320px] shrink-0 overflow-visible rounded-[24px] border border-slate-900/10 shadow-[0_30px_70px_rgba(15,23,42,0.2)]">
-      <div className="absolute inset-0 rounded-[24px] bg-cover bg-center" style={{ backgroundImage: selectedBackground }} />
-      <div className="relative rounded-[24px] bg-slate-950/18 p-3 backdrop-blur-[1px]">
-        <div className="rounded-[22px] bg-white/95 p-3 shadow-lg shadow-slate-900/10">
+    <div className={`relative overflow-visible ${outerClassName}`}>
+      <div
+        className={`absolute inset-0 bg-cover bg-center ${backgroundRadiusClass}`}
+        style={{
+          backgroundImage: selectedBackground,
+          backgroundSize: 'cover',
+          backgroundPosition: expanded ? 'center 78%' : contained ? 'center center' : 'center bottom',
+          backgroundRepeat: 'no-repeat',
+        }}
+      />
+      <div className={`relative backdrop-blur-[1px] ${overlayClassName}`}>
+        <div className={cardClassName} style={expanded ? { height: 'min(60dvh, 600px)' } : undefined}>
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2 text-slate-900">
               <Inbox size={18} />
@@ -154,6 +220,7 @@ export const InboxColumn = () => {
 
             <div className="flex items-center gap-2">
               <button
+                ref={filterButtonRef}
                 onClick={() => {
                   setIsFilterOpen((value) => !value);
                   setIsMenuOpen(false);
@@ -165,6 +232,7 @@ export const InboxColumn = () => {
                 <ListFilter size={16} />
               </button>
               <button
+                ref={menuButtonRef}
                 onClick={() => {
                   setIsMenuOpen((value) => !value);
                   setIsFilterOpen(false);
@@ -200,7 +268,7 @@ export const InboxColumn = () => {
 
           <div
             ref={setNodeRef}
-            className={`custom-scrollbar max-h-[55vh] space-y-2 overflow-y-auto pr-1 transition ${isOver ? 'rounded-[18px] bg-white/10 p-1' : ''}`}
+            className={`${listClassName} ${isOver ? 'rounded-[18px] bg-white/10 p-1' : ''}`}
           >
             {visibleIdeas.length > 0 ? (
               visibleIdeas.map((idea) => <InboxIdeaCard key={idea.id} idea={idea} showArchived={showArchived} dndId={`inbox:${idea.id}`} />)
@@ -213,8 +281,10 @@ export const InboxColumn = () => {
         </div>
       </div>
 
-      {isMenuOpen && (
-        <div ref={menuRef} className="kb-inbox-popover absolute left-[calc(100%+14px)] top-12 z-40 w-[310px] rounded-[20px] bg-slate-800 p-4 text-white shadow-2xl">
+      {isMenuOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+        <div ref={menuRef} style={getPopoverStyle(menuButtonRef, 310)} className="kb-inbox-popover rounded-[20px] bg-slate-800 p-4 text-white shadow-2xl">
           <div className="mb-4 flex items-center justify-between">
             <div className="text-lg font-bold">Меню</div>
             <button onClick={() => setIsMenuOpen(false)} className="rounded-xl border border-white/15 p-2 text-slate-300 transition hover:bg-white/5">
@@ -292,11 +362,14 @@ export const InboxColumn = () => {
               <ChevronRight size={16} />
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {isFilterOpen && (
-        <div ref={filterRef} className="kb-inbox-popover absolute left-[calc(100%+14px)] top-12 z-40 w-[340px] rounded-[20px] bg-slate-800 p-4 text-white shadow-2xl">
+      {isFilterOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+        <div ref={filterRef} style={getPopoverStyle(filterButtonRef, 340)} className="kb-inbox-popover rounded-[20px] bg-slate-800 p-4 text-white shadow-2xl">
           <div className="mb-4 flex items-center justify-between">
             <div className="text-lg font-bold">Фильтр</div>
             <button onClick={() => setIsFilterOpen(false)} className="text-slate-400 transition hover:text-white">
@@ -362,11 +435,14 @@ export const InboxColumn = () => {
               Сбросить фильтры
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {isBackgroundOpen && (
-        <div ref={backgroundRef} className="kb-inbox-popover absolute left-[calc(100%+14px)] top-12 z-40 w-[360px] rounded-[20px] bg-slate-800 p-4 text-white shadow-2xl">
+      {isBackgroundOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+        <div ref={backgroundRef} style={getPopoverStyle(menuButtonRef, 360)} className="kb-inbox-popover rounded-[20px] bg-slate-800 p-4 text-white shadow-2xl">
           <div className="mb-4 flex items-center justify-between">
             <div className="text-lg font-bold">Сменить фон</div>
             <button onClick={() => setIsBackgroundOpen(false)} className="text-slate-400 transition hover:text-white">
@@ -433,7 +509,8 @@ export const InboxColumn = () => {
               <ImagePlus size={24} />
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

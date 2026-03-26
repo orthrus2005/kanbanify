@@ -56,7 +56,7 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: dndId || `task:${task.id}`,
-    disabled: isMenuOpen || isModalOpen || task.is_archived,
+    disabled: isMenuOpen || isModalOpen || task.is_archived || isOverlay,
   });
 
   useEffect(() => {
@@ -324,6 +324,7 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
                 event.stopPropagation();
                 setIsMenuOpen((value) => !value);
               }}
+              onPointerDown={(event) => event.stopPropagation()}
               className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 opacity-0 transition hover:bg-slate-100 hover:text-slate-700 group-hover:opacity-100"
               aria-label="Открыть меню карточки"
             >

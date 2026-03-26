@@ -1,16 +1,93 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { LayoutGrid, LogOut, Menu, Plus, Search, X } from 'lucide-react';
+import {
+  ArrowRightLeft,
+  CalendarDays,
+  Inbox,
+  LayoutGrid,
+  LogOut,
+  Plus,
+  User2,
+  X,
+} from 'lucide-react';
 import { useAuthStore } from './entities/session/model/authStore';
 import { useBoardStore } from './entities/board/model/store';
 import { KanbanBoard } from './widgets/kanban/ui/KanbanBoard';
+import { InboxWorkspace } from './widgets/kanban/ui/InboxWorkspace';
+import { PlannerWorkspacePanel } from './widgets/kanban/ui/PlannerWorkspacePanel';
+import { PlannerWorkspace } from './widgets/planner/ui/PlannerWorkspace';
 import { AuthForm } from './features/auth/ui/AuthForm';
 import { ConfirmDialog } from './shared/ui/ConfirmDialog';
 
+const WORKSPACE_PANELS_KEY = 'kanbanify-workspace-panels';
+const DEFAULT_WORKSPACE_PANELS = { inbox: false, planner: false, board: true };
+
+const dedupeBoards = (items) => Array.from(new Map(items.map((board) => [board.id, board])).values());
+
+const normalizeWorkspacePanels = (value) => {
+  if (typeof value === 'string') {
+    if (value === 'inbox') return { inbox: true, planner: false, board: false };
+    if (value === 'planner') return { inbox: false, planner: true, board: false };
+    if (value === 'board') return { inbox: false, planner: false, board: true };
+  }
+
+  const normalized = {
+    inbox: Boolean(value?.inbox),
+    planner: Boolean(value?.planner),
+    board: Boolean(value?.board),
+  };
+
+  if (!normalized.inbox && !normalized.planner && !normalized.board) {
+    return DEFAULT_WORKSPACE_PANELS;
+  }
+
+  return normalized;
+};
+
+const getActiveWorkspaceLabel = (panels) =>
+  [
+    panels.inbox ? 'Inbox' : null,
+    panels.planner ? 'Планировщик' : null,
+    panels.board ? 'Доска' : null,
+  ]
+    .filter(Boolean)
+    .join(' + ');
+
+const WorkspacePlaceholder = ({ title, text, actionLabel, onAction }) => (
+  <div className="flex h-full flex-col items-center justify-center px-5 py-12 text-center text-white/88">
+    <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-[28px] border border-white/14 bg-white/10 shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
+      <LayoutGrid className="h-9 w-9" />
+    </div>
+    <h2 className="text-2xl font-black tracking-tight text-white">{title}</h2>
+    <p className="mt-2 max-w-md text-sm leading-6 text-white/74">{text}</p>
+    {onAction ? (
+      <button
+        type="button"
+        onClick={onAction}
+        className="mt-5 rounded-2xl border border-white/14 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/14"
+      >
+        {actionLabel}
+      </button>
+    ) : null}
+  </div>
+);
+
 function App() {
   const { user, checkSession, signOut } = useAuthStore();
-  const { boards = [], publicBoards = [], currentBoardId, setCurrentBoard, createBoard, fetchBoards, isLoading } = useBoardStore();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const { boards = [], publicBoards = [], currentBoardId, setCurrentBoard, createBoard, fetchBoards, isLoading } =
+    useBoardStore();
+  const [isBoardPickerOpen, setIsBoardPickerOpen] = useState(false);
+  const [workspacePanels, setWorkspacePanels] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_WORKSPACE_PANELS;
+
+    const raw = window.localStorage.getItem(WORKSPACE_PANELS_KEY);
+    if (!raw) return DEFAULT_WORKSPACE_PANELS;
+
+    try {
+      return normalizeWorkspacePanels(JSON.parse(raw));
+    } catch {
+      return normalizeWorkspacePanels(raw);
+    }
+  });
 
   useEffect(() => {
     checkSession();
@@ -21,11 +98,15 @@ function App() {
   }, [user]);
 
   useEffect(() => {
-    if (!isMobileSidebarOpen) return undefined;
+    window.localStorage.setItem(WORKSPACE_PANELS_KEY, JSON.stringify(workspacePanels));
+  }, [workspacePanels]);
+
+  useEffect(() => {
+    if (!isBoardPickerOpen) return undefined;
 
     const previousOverflow = document.body.style.overflow;
     const handleEscape = (event) => {
-      if (event.key === 'Escape') setIsMobileSidebarOpen(false);
+      if (event.key === 'Escape') setIsBoardPickerOpen(false);
     };
 
     document.body.style.overflow = 'hidden';
@@ -35,23 +116,14 @@ function App() {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [isMobileSidebarOpen]);
+  }, [isBoardPickerOpen]);
 
-  const normalizedSearch = searchTerm.trim().toLowerCase();
-
-  const filteredBoards = useMemo(
-    () => boards.filter((board) => board.title?.toLowerCase().includes(normalizedSearch)),
-    [boards, normalizedSearch]
-  );
-
-  const filteredPublicBoards = useMemo(
-    () => publicBoards.filter((board) => board.title?.toLowerCase().includes(normalizedSearch)),
-    [publicBoards, normalizedSearch]
-  );
-
-  const currentBoard = useMemo(
-    () => [...boards, ...publicBoards].find((board) => board.id === currentBoardId) ?? null,
-    [boards, publicBoards, currentBoardId]
+  const allBoards = useMemo(() => dedupeBoards([...boards, ...publicBoards]), [boards, publicBoards]);
+  const currentBoard = useMemo(() => allBoards.find((board) => board.id === currentBoardId) ?? null, [allBoards, currentBoardId]);
+  const activeWorkspaceLabel = useMemo(() => getActiveWorkspaceLabel(workspacePanels), [workspacePanels]);
+  const visiblePublicBoards = useMemo(
+    () => publicBoards.filter((board) => !boards.some((ownBoard) => ownBoard.id === board.id)),
+    [publicBoards, boards]
   );
 
   if (!user) return <AuthForm />;
@@ -60,224 +132,330 @@ function App() {
     const title = prompt('Название доски:');
     if (title?.trim()) {
       await createBoard(title.trim());
-      setIsMobileSidebarOpen(false);
+      setIsBoardPickerOpen(false);
     }
   };
 
   const handleSelectBoard = async (boardId) => {
     await setCurrentBoard(boardId);
-    setIsMobileSidebarOpen(false);
+    setIsBoardPickerOpen(false);
   };
 
-  const handleSignOut = async () => {
-    setIsMobileSidebarOpen(false);
-    await signOut();
+  const toggleWorkspacePanel = (panelKey) => {
+    setWorkspacePanels((currentState) => {
+      const nextState = { ...currentState, [panelKey]: !currentState[panelKey] };
+
+      if (!nextState.inbox && !nextState.planner && !nextState.board) {
+        return currentState;
+      }
+
+      return nextState;
+    });
   };
 
-  const noSearchResults = normalizedSearch && filteredBoards.length === 0 && filteredPublicBoards.length === 0;
+  const renderPlannerContent = () => <PlannerWorkspace />;
 
-  const renderSidebarContent = (isMobile = false) => (
-    <>
-      <div className="border-b border-slate-200/70 p-5 sm:p-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-emerald-500 text-white shadow-lg shadow-blue-500/20">
-              <LayoutGrid size={18} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Workspace</p>
-              <h1 className="truncate text-xl font-black tracking-tight text-slate-900">Kanbanify</h1>
-            </div>
-          </div>
+  const renderInboxContent = (expanded = false) => <KanbanBoard showHeader={false} showInbox inboxOnly inboxExpanded={expanded} />;
+  const renderBoardWorkspaceContent = (withInbox = false, splitMiddlePanel = null) => (
+    <KanbanBoard showHeader={false} showInbox={withInbox} splitMiddlePanel={splitMiddlePanel} />
+  );
+  const renderInboxWindow = () => <InboxWorkspace />;
+  const renderPlannerWindow = (className = '') => <PlannerWorkspacePanel className={className}>{renderPlannerContent()}</PlannerWorkspacePanel>;
 
-          {isMobile ? (
-            <button
-              type="button"
-              onClick={() => setIsMobileSidebarOpen(false)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
-              aria-label="Закрыть меню"
-            >
-              <X size={18} />
-            </button>
-          ) : null}
-        </div>
+  const renderBoardContent = () => {
+    if (currentBoardId) {
+      return renderBoardWorkspaceContent(false);
+    }
 
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Поиск по всем доскам"
-            className="w-full rounded-2xl border border-slate-200 bg-white/85 py-3 pl-11 pr-4 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-          />
-        </div>
-      </div>
+    return (
+      <WorkspacePlaceholder
+        title="Выберите доску"
+        text="Откройте другую доску через нижнее меню, чтобы продолжить работу."
+        actionLabel="Открыть список досок"
+        onAction={() => setIsBoardPickerOpen(true)}
+      />
+    );
+  };
 
-      <div className="custom-scrollbar flex-1 overflow-y-auto p-4">
-        <section className="mb-8">
-          <div className="mb-3 flex items-center justify-between px-2">
-            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Мои доски</p>
-            <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{filteredBoards.length}</span>
-          </div>
+  const activePanelCount = [workspacePanels.inbox, workspacePanels.planner, workspacePanels.board].filter(Boolean).length;
 
-          <div className="space-y-1.5">
-            {isLoading && boards.length === 0 ? (
-              <p className="px-3 py-2 text-sm text-slate-400">Загрузка...</p>
-            ) : (
-              filteredBoards.map((board) => (
-                <button
-                  key={board.id}
-                  onClick={() => handleSelectBoard(board.id)}
-                  className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-all ${
-                    currentBoardId === board.id
-                      ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
-                      : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
-                  }`}
-                >
-                  <span className={`h-2.5 w-2.5 rounded-full ${currentBoardId === board.id ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                  <span className="truncate text-sm font-semibold">{board.title}</span>
-                </button>
-              ))
-            )}
-          </div>
+  const renderSingleWorkspace = () => {
+    if (workspacePanels.inbox) {
+      return <div className="h-full overflow-hidden">{renderInboxContent(true)}</div>;
+    }
 
-          <button
-            onClick={handleCreateBoard}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-blue-200 bg-blue-50/70 px-3 py-3 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100/80"
-          >
-            <Plus size={16} />
-            Создать доску
-          </button>
-        </section>
+    if (workspacePanels.planner) {
+      return renderPlannerContent();
+    }
 
-        <section>
-          <div className="mb-3 flex items-center justify-between px-2">
-            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Публичные</p>
-            <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-              {filteredPublicBoards.length}
-            </span>
-          </div>
+    if (workspacePanels.board) {
+      return renderBoardContent();
+    }
 
-          <div className="space-y-1.5">
-            {filteredPublicBoards.map((board) => (
-              <button
-                key={board.id}
-                onClick={() => handleSelectBoard(board.id)}
-                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-all ${
-                  currentBoardId === board.id
-                    ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
-                    : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
-                }`}
-              >
-                <span className="text-base">🌍</span>
-                <span className="truncate text-sm font-semibold">{board.title}</span>
-              </button>
-            ))}
-          </div>
-        </section>
+    return (
+      <WorkspacePlaceholder
+        title="Выберите рабочую зону"
+        text="Откройте хотя бы одну вкладку через нижнее меню."
+      />
+    );
+  };
 
-        {noSearchResults ? (
-          <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-white/60 px-4 py-5 text-sm text-slate-500">
-            Ничего не найдено. Попробуйте другой запрос.
-          </div>
+  const renderWorkspace = () => {
+    if (activePanelCount <= 1) {
+      return renderSingleWorkspace();
+    }
+
+    const showTripleWorkspace = workspacePanels.inbox && workspacePanels.planner && workspacePanels.board;
+    const showCombinedBoardWorkspace = workspacePanels.inbox && workspacePanels.board;
+    const stretchedPanelClass = 'h-full self-stretch';
+
+    return (
+      <div className="custom-scrollbar flex h-full min-h-0 items-stretch gap-4 overflow-x-auto overflow-y-hidden px-4 pb-0 pt-2 sm:px-6 sm:pb-0 sm:pt-3">
+        {showCombinedBoardWorkspace && showTripleWorkspace ? (
+          <section className={`relative z-[5] flex min-h-0 min-w-[1760px] flex-1 overflow-visible ${stretchedPanelClass}`}>
+            {renderBoardWorkspaceContent(true, renderPlannerWindow(stretchedPanelClass))}
+          </section>
+        ) : null}
+
+        {!showCombinedBoardWorkspace && workspacePanels.inbox ? renderInboxWindow() : null}
+
+        {workspacePanels.planner && !showTripleWorkspace ? renderPlannerWindow(stretchedPanelClass) : null}
+
+        {showCombinedBoardWorkspace && !showTripleWorkspace ? (
+          <section className={`relative z-[5] min-h-0 min-w-[1160px] flex-1 overflow-visible ${stretchedPanelClass}`}>
+            {renderBoardWorkspaceContent(true)}
+          </section>
+        ) : null}
+
+        {!showCombinedBoardWorkspace && workspacePanels.board ? (
+          <section className={`min-h-0 min-w-[860px] flex-1 overflow-hidden rounded-[30px] border border-white/12 bg-slate-950/10 ${stretchedPanelClass}`}>
+            {renderBoardContent()}
+          </section>
         ) : null}
       </div>
-
-      <div className="border-t border-slate-200/70 bg-white/55 p-4">
-        <div className="mb-4 flex items-center gap-3 rounded-2xl bg-white/80 p-3 ring-1 ring-slate-200/70">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-400 text-sm font-bold text-white">
-            {user.email?.[0]?.toUpperCase()}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Аккаунт</p>
-            <p className="truncate text-sm font-semibold text-slate-800">{user.email}</p>
-          </div>
-        </div>
-
-        <button
-          onClick={handleSignOut}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-        >
-          <LogOut size={16} />
-          Выйти
-        </button>
-      </div>
-    </>
-  );
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-transparent p-0 sm:p-3">
+    <div className="h-[100dvh] overflow-hidden bg-[#202228] p-0 md:p-3">
       <ConfirmDialog />
 
-      <div className="kb-shell flex min-h-[100dvh] w-full overflow-hidden border border-white/60 shadow-[0_30px_80px_rgba(15,23,42,0.12)] sm:min-h-[calc(100vh-24px)] sm:rounded-[28px]">
-        {isMobileSidebarOpen ? (
-          <div className="fixed inset-0 z-[1100] lg:hidden">
-            <button
-              type="button"
-              onClick={() => setIsMobileSidebarOpen(false)}
-              className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
-              aria-label="Закрыть меню досок"
-            />
+      {isBoardPickerOpen ? (
+        <div className="fixed inset-0 z-[1200] flex items-end justify-center bg-slate-950/38 backdrop-blur-sm md:items-center">
+          <button type="button" aria-label="Закрыть выбор доски" className="absolute inset-0" onClick={() => setIsBoardPickerOpen(false)} />
 
-            <aside className="relative flex h-full w-[min(88vw,340px)] flex-col border-r border-slate-200/70 bg-white/92 shadow-[0_24px_80px_rgba(15,23,42,0.22)] backdrop-blur-2xl">
-              {renderSidebarContent(true)}
-            </aside>
+          <div className="relative z-[1] flex max-h-[min(78vh,780px)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#1b1f26] text-white shadow-[0_36px_100px_rgba(0,0,0,0.46)] md:rounded-[30px]">
+            <div className="border-b border-white/8 px-4 py-4 sm:px-6">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-black uppercase tracking-[0.24em] text-white/62">Workspace</div>
+                  <div className="text-xl font-black tracking-tight">Выбрать другую доску</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsBoardPickerOpen(false)}
+                  className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/12 bg-white/8 text-white/88 transition hover:bg-white/12 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+            </div>
+
+            <div className="custom-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+              <div className="mb-6">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-xs font-black uppercase tracking-[0.2em] text-white/38">Мои доски</div>
+                  <div className="rounded-full bg-white/8 px-2.5 py-1 text-[11px] font-bold text-white/65">{boards.length}</div>
+                </div>
+
+                <div className="space-y-2">
+                  {isLoading && boards.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/7 px-4 py-4 text-sm text-white/78">Загрузка...</div>
+                  ) : boards.length ? (
+                    boards.map((board) => (
+                      <button
+                        key={board.id}
+                        onClick={() => handleSelectBoard(board.id)}
+                        className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                          currentBoardId === board.id
+                            ? 'border-blue-400/50 bg-blue-500/16 text-white'
+                            : 'border-white/10 bg-white/7 text-white/86 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        <span className={`h-2.5 w-2.5 rounded-full ${currentBoardId === board.id ? 'bg-emerald-400' : 'bg-white/28'}`} />
+                        <span className="truncate text-sm font-semibold">{board.title}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-white/4 px-4 py-5 text-sm text-white/45">
+                      Личных досок пока нет.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-xs font-black uppercase tracking-[0.2em] text-white/38">Публичные</div>
+                  <div className="rounded-full bg-white/8 px-2.5 py-1 text-[11px] font-bold text-white/65">{visiblePublicBoards.length}</div>
+                </div>
+
+                <div className="space-y-2">
+                  {visiblePublicBoards.length ? (
+                    visiblePublicBoards.map((board) => (
+                      <button
+                        key={board.id}
+                        onClick={() => handleSelectBoard(board.id)}
+                        className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                          currentBoardId === board.id
+                            ? 'border-blue-400/50 bg-blue-500/16 text-white'
+                            : 'border-white/10 bg-white/7 text-white/86 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        <span className="text-base">🌍</span>
+                        <span className="truncate text-sm font-semibold">{board.title}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-white/4 px-4 py-5 text-sm text-white/45">
+                      Публичных досок пока нет.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-white/8 bg-white/[0.03] px-4 py-4 sm:flex-row sm:justify-between sm:px-6">
+              <button
+                type="button"
+                onClick={handleCreateBoard}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                <Plus size={16} />
+                Создать доску
+              </button>
+              <button
+                type="button"
+                onClick={signOut}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-sm font-semibold text-white/90 transition hover:bg-white/12 hover:text-white"
+              >
+                <LogOut size={16} />
+                Выйти
+              </button>
+            </div>
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        <aside className="hidden w-[290px] shrink-0 border-r border-slate-200/70 bg-slate-950/[0.035] lg:flex lg:flex-col">
-          {renderSidebarContent(false)}
-        </aside>
+      <div className="kb-shell relative flex h-full min-h-0 w-full flex-col overflow-hidden border border-white/8 shadow-[0_28px_80px_rgba(15,23,42,0.22)] md:rounded-[30px]">
+        <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,rgba(252,253,255,0.96),rgba(244,247,252,0.94))] px-4 py-4 text-slate-900 backdrop-blur-xl sm:px-6">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-gradient-to-br from-sky-500 via-blue-600 to-emerald-500 text-white shadow-[0_14px_34px_rgba(37,99,235,0.28)]">
+                <LayoutGrid size={18} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Workspace</div>
+                <div className="truncate text-lg font-black tracking-tight text-slate-900 sm:text-[1.35rem]">Kanbanify</div>
+              </div>
+            </div>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex items-center justify-between gap-3 border-b border-slate-200/70 bg-white/65 px-4 py-3 backdrop-blur-xl lg:hidden">
-            <button
-              type="button"
-              onClick={() => setIsMobileSidebarOpen(true)}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
-              aria-label="Открыть меню досок"
-            >
-              <Menu size={18} />
-            </button>
+            <div className="ml-auto flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={handleCreateBoard}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-[18px] bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,99,235,0.3)] transition hover:bg-blue-700"
+              >
+                <Plus size={16} />
+                <span className="hidden sm:inline">Создать</span>
+              </button>
+              <button
+                type="button"
+                onClick={signOut}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-[18px] border border-slate-200 bg-white/88 text-slate-700 shadow-[0_8px_24px_rgba(15,23,42,0.06)] transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
+                aria-label="Выйти"
+              >
+                <LogOut size={16} />
+              </button>
+              <div className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-orange-500 text-sm font-black text-white shadow-[0_12px_28px_rgba(249,115,22,0.25)]">
+                {user.email?.[0]?.toUpperCase() || <User2 size={16} />}
+              </div>
+            </div>
+          </div>
+        </div>
 
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Workspace</p>
-              <div className="truncate text-sm font-bold text-slate-900">{currentBoard?.title || 'Выберите доску'}</div>
+        <div className="border-b border-violet-200/70 bg-[linear-gradient(180deg,rgba(249,245,255,0.96),rgba(239,233,255,0.94))] px-4 py-3 text-slate-900 backdrop-blur-xl sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="min-w-0">
+              <div className="text-[10px] font-black uppercase tracking-[0.28em] text-violet-500/80">{activeWorkspaceLabel}</div>
+              <div className="truncate text-lg font-black tracking-tight text-slate-900 sm:text-[1.7rem]">
+                {currentBoard?.title || (workspacePanels.inbox ? 'Глобальный Inbox' : 'Без выбранной доски')}
+              </div>
             </div>
 
             <button
               type="button"
-              onClick={handleCreateBoard}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm transition hover:bg-blue-700"
-              aria-label="Создать доску"
+              onClick={() => setIsBoardPickerOpen(true)}
+              className="hidden"
             >
-              <Plus size={18} />
+              <ArrowRightLeft size={15} />
+              Выбрать другую доску
             </button>
-          </header>
+          </div>
+        </div>
 
-          <main className="min-h-0 min-w-0 flex-1">
-            {currentBoardId ? (
-              <KanbanBoard />
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center px-5 py-10 text-center text-slate-400 sm:px-6">
-                <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-[28px] bg-white/70 shadow-lg shadow-slate-200/70 ring-1 ring-white/70">
-                  <LayoutGrid className="h-9 w-9" />
-                </div>
-                <h2 className="text-2xl font-black tracking-tight text-slate-700">Выберите доску</h2>
-                <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-                  Откройте существующую доску или создайте новую, чтобы начать раскладывать задачи по колонкам.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setIsMobileSidebarOpen(true)}
-                  className="mt-5 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 lg:hidden"
-                >
-                  <Menu size={16} />
-                  Открыть меню досок
-                </button>
-              </div>
-            )}
-          </main>
+        <main className="min-h-0 min-w-0 flex-1 bg-[linear-gradient(180deg,rgba(15,23,42,0.08),rgba(15,23,42,0.04)),linear-gradient(180deg,#66418f_0%,#7b4d99_46%,#885b93_100%)]">
+          {renderWorkspace()}
+        </main>
+
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[100] flex justify-center px-4">
+          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-[24px] border border-white/12 bg-[#171a20]/96 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-2xl">
+            <button
+              type="button"
+              onClick={() => toggleWorkspacePanel('inbox')}
+              className={`inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                workspacePanels.inbox
+                  ? 'bg-blue-500/24 text-blue-100 shadow-[inset_0_0_0_1px_rgba(147,197,253,0.18)]'
+                  : 'text-slate-100 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <Inbox size={16} />
+              Inbox
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleWorkspacePanel('planner')}
+              className={`inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                workspacePanels.planner
+                  ? 'bg-blue-500/24 text-blue-100 shadow-[inset_0_0_0_1px_rgba(147,197,253,0.18)]'
+                  : 'text-slate-100 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <CalendarDays size={16} />
+              Планировщик
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleWorkspacePanel('board')}
+              className={`inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                workspacePanels.board
+                  ? 'bg-blue-500/24 text-blue-100 shadow-[inset_0_0_0_1px_rgba(147,197,253,0.18)]'
+                  : 'text-slate-100 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <LayoutGrid size={16} />
+              Доска
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsBoardPickerOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10 hover:text-white"
+            >
+              <ArrowRightLeft size={16} />
+              Выбрать другую доску
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -285,3 +463,4 @@ function App() {
 }
 
 export default App;
+
