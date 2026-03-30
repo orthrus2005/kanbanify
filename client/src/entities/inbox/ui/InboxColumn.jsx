@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { useDroppable } from '@dnd-kit/core';
 import { Archive, Check, ChevronRight, ImagePlus, Inbox, ListFilter, Menu, PaintBucket, Plus, Settings, SlidersHorizontal, X } from 'lucide-react';
 import { useBoardStore } from '../../board/model/store';
-import { supabase } from '../../../shared/api/supabase';
 import { useAuthStore } from '../../session/model/authStore';
 import { InboxIdeaCard } from './InboxIdeaCard';
 
@@ -33,34 +32,6 @@ const colorPresets = [
   { id: 'sunset', label: 'Закат', value: 'linear-gradient(180deg, #fb7185 0%, #f97316 100%)' },
   { id: 'teal', label: 'Бирюзовый', value: 'linear-gradient(180deg, #0f766e 0%, #134e4a 100%)' },
 ];
-
-const INBOX_BACKGROUND_STORAGE_KEY = (userId) => `kanbanify-inbox-background-${userId || 'guest'}`;
-
-const readStoredInboxBackground = (userId) => {
-  if (typeof window === 'undefined') return null;
-
-  try {
-    const raw = window.localStorage.getItem(INBOX_BACKGROUND_STORAGE_KEY(userId));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-    return parsed?.value ? parsed : null;
-  } catch {
-    return null;
-  }
-};
-
-const writeStoredInboxBackground = (userId, value, isCustom) => {
-  if (typeof window === 'undefined' || !value) return;
-
-  window.localStorage.setItem(
-    INBOX_BACKGROUND_STORAGE_KEY(userId),
-    JSON.stringify({
-      value,
-      isCustom: Boolean(isCustom),
-    })
-  );
-};
 
 const isCreatedWithin = (item, days) => {
   if (!item.created_at) return false;
@@ -115,7 +86,7 @@ const compressImageToDataUrl = (file, maxSide = 1920, quality = 0.86) =>
 
 export const InboxColumn = ({ expanded = false, contained = false }) => {
   const { inboxIdeas, archivedInboxIdeas, addInboxIdea } = useBoardStore();
-  const { user } = useAuthStore();
+  const { user, updateUserMetadata } = useAuthStore();
   const { setNodeRef, isOver } = useDroppable({ id: 'inbox' });
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -138,86 +109,33 @@ export const InboxColumn = ({ expanded = false, contained = false }) => {
   const filterButtonRef = useRef(null);
   const menuButtonRef = useRef(null);
   const fileInputRef = useRef(null);
-  const lastLoadedBackgroundRef = useRef(null);
 
   const selectedBackground = customBackground || backgroundValue;
 
   useEffect(() => {
-    let isMounted = true;
+    const savedBackground = user?.user_metadata?.inbox_background;
 
-    const loadInboxBackground = async () => {
-      if (!user?.id) {
-        if (!isMounted) return;
+    if (savedBackground?.value) {
+      if (savedBackground.isCustom) {
+        setCustomBackground(savedBackground.value);
+      } else {
         setCustomBackground('');
-        setBackgroundValue(photoPresets[0].value);
-        lastLoadedBackgroundRef.current = null;
-        return;
+        setBackgroundValue(savedBackground.value);
       }
-
-      const { data, error } = await supabase
-        .from('inbox_settings')
-        .select('background_value, background_is_custom')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (!isMounted) return;
-
-      const fallbackBackground = readStoredInboxBackground(user.id);
-      const effectiveBackground = data?.background_value
-        ? { value: data.background_value, isCustom: data.background_is_custom }
-        : fallbackBackground;
-
-      if (error) {
-        console.error('Failed to load inbox background from DB', error);
-      }
-
-      if (!effectiveBackground?.value) {
-        setCustomBackground('');
-        setBackgroundValue(photoPresets[0].value);
-        lastLoadedBackgroundRef.current = null;
-        return;
-      }
-
-      lastLoadedBackgroundRef.current = effectiveBackground.value;
-
-      if (effectiveBackground.isCustom) {
-        setCustomBackground(effectiveBackground.value);
-        return;
-      }
-
-      setCustomBackground('');
-      setBackgroundValue(effectiveBackground.value);
-    };
-
-    void loadInboxBackground();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [user]);
-
-  const persistInboxBackground = async (value, isCustom = false) => {
-    if (!user?.id || !value || lastLoadedBackgroundRef.current === value) return;
-
-    writeStoredInboxBackground(user.id, value, isCustom);
-
-    const { error } = await supabase.from('inbox_settings').upsert(
-      {
-        user_id: user.id,
-        background_value: value,
-        background_is_custom: isCustom,
-      },
-      {
-        onConflict: 'user_id',
-      }
-    );
-
-    if (!error) {
-      lastLoadedBackgroundRef.current = value;
       return;
     }
 
-    console.error('Failed to save inbox background to DB', error);
+    setCustomBackground('');
+    setBackgroundValue(photoPresets[0].value);
+  }, [user]);
+
+  const persistInboxBackground = async (value, isCustom = false) => {
+    await updateUserMetadata({
+      inbox_background: {
+        value,
+        isCustom,
+      },
+    });
   };
 
   const getPopoverStyle = (anchorRef, width) => {

@@ -12,10 +12,27 @@ export const useAuthStore = create((set) => ({
       data: { session },
     } = await supabase.auth.getSession();
 
-    set({ user: session?.user || null, isLoading: false });
+    if (session) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    supabase.auth.onAuthStateChange((_event, sessionData) => {
-      set({ user: sessionData?.user || null });
+      set({ user: user || session.user || null, isLoading: false });
+    } else {
+      set({ user: null, isLoading: false });
+    }
+
+    supabase.auth.onAuthStateChange(async (_event, sessionData) => {
+      if (!sessionData) {
+        set({ user: null });
+        return;
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      set({ user: user || sessionData.user || null });
     });
   },
 
@@ -62,10 +79,14 @@ export const useAuthStore = create((set) => ({
       return null;
     }
 
-    if (data?.user) {
-      set({ user: data.user, error: '' });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user || data?.user) {
+      set({ user: user || data.user, error: '' });
     }
 
-    return data?.user || null;
+    return user || data?.user || null;
   },
 }));
