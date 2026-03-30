@@ -4,6 +4,10 @@ import { useAuthStore } from '../../session/model/authStore';
 
 const LEGACY_INBOX_STORAGE_KEY = (userId) => `kanbanify-global-inbox-${userId || 'guest'}`;
 const INBOX_ATTACHMENT_BUCKET = 'inbox-attachments';
+const ARCHIVED_CARD_TYPE = {
+  TASK: 'task',
+  INBOX: 'inbox',
+};
 
 const readLegacyInboxState = (userId) => {
   if (typeof window === 'undefined') {
@@ -223,6 +227,43 @@ const createAttachmentUrl = async (filePath) => {
   return data?.signedUrl || null;
 };
 
+const upsertArchivedCard = async (payload) =>
+  supabase
+    .from('archived_cards')
+    .upsert([payload], { onConflict: 'item_type,source_id' })
+    .select()
+    .single();
+
+const deleteArchivedCard = async (itemType, sourceId) =>
+  supabase.from('archived_cards').delete().eq('item_type', itemType).eq('source_id', sourceId);
+
+const toArchivedTaskRecord = (item) => ({
+  id: item.source_id,
+  title: item.title,
+  description: item.description || '',
+  due_date: item.due_date || null,
+  color: item.color || null,
+  column_id: item.column_id || null,
+  board_id: item.board_id || null,
+  is_archived: true,
+  archived_at: item.archived_at,
+  created_at: item.created_at || item.archived_at,
+});
+
+const toArchivedCardItem = (item) => ({
+  id: item.id,
+  source_id: item.source_id,
+  item_type: item.item_type,
+  title: item.title,
+  description: item.description || '',
+  due_date: item.due_date || null,
+  color: item.color || null,
+  board_id: item.board_id || null,
+  column_id: item.column_id || null,
+  archived_at: item.archived_at,
+  created_at: item.created_at || item.archived_at,
+});
+
 export const useBoardStore = create((set, get) => ({
   boards: [],
   publicBoards: [],
@@ -230,6 +271,7 @@ export const useBoardStore = create((set, get) => ({
   columns: [],
   tasks: [],
   archivedTasks: [],
+  archivedCards: [],
   inboxIdeas: [],
   archivedInboxIdeas: [],
   inboxLabels: [],
@@ -479,6 +521,7 @@ export const useBoardStore = create((set, get) => ({
 
     try {
       const inboxPromise = get().loadInboxIdeas();
+      const archivedPromise = get().fetchArchivedTasks(boardId);
       const { data: cols } = await supabase.from('columns').select('*').eq('board_id', boardId).order('created_at');
 
       if (cols?.length > 0) {
@@ -493,31 +536,56 @@ export const useBoardStore = create((set, get) => ({
         set({ columns: [], tasks: [] });
       }
 
-      await inboxPromise;
+      await Promise.all([inboxPromise, archivedPromise]);
     } finally {
       set({ isLoading: false });
     }
   },
 
   fetchArchivedTasks: async (boardId) => {
-    const boardColumns = get().columns.length
-      ? get().columns
-      : (await supabase.from('columns').select('*').eq('board_id', boardId).order('created_at')).data || [];
-
-    if (!boardColumns.length) {
+    if (!boardId) {
       set({ archivedTasks: [] });
       return [];
     }
 
-    const { data } = await supabase
-      .from('tasks')
+    const { data, error } = await supabase
+      .from('archived_cards')
       .select('*')
-      .in('column_id', boardColumns.map((column) => column.id))
-      .eq('is_archived', true);
+      .eq('item_type', ARCHIVED_CARD_TYPE.TASK)
+      .eq('board_id', boardId)
+      .order('archived_at', { ascending: false });
 
-    const nextArchivedTasks = data || [];
+    if (error) {
+      set({ archivedTasks: [] });
+      return [];
+    }
+
+    const nextArchivedTasks = (data || []).map(toArchivedTaskRecord);
     set({ archivedTasks: nextArchivedTasks });
     return nextArchivedTasks;
+  },
+
+  fetchArchivedCards: async () => {
+    const user = await getAuthenticatedUser();
+    if (!user?.id) {
+      set({ archivedCards: [] });
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('archived_cards')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('archived_at', { ascending: false });
+
+    if (error) {
+      set({ archivedCards: [] });
+      return [];
+    }
+
+    const nextArchivedCards = (data || []).map(toArchivedCardItem);
+    set({ archivedCards: nextArchivedCards });
+    return nextArchivedCards;
   },
 
   createBoard: async (title, isPublic = false) => {
@@ -658,6 +726,11 @@ export const useBoardStore = create((set, get) => ({
   },
 
   archiveInboxIdea: async (id) => {
+    const idea = get().inboxIdeas.find((item) => item.id === id);
+    const user = await getAuthenticatedUser();
+
+    if (!idea || !user?.id) return null;
+
     const { data, error } = await supabase
       .from('inbox_items')
       .update({ is_archived: true })
@@ -667,7 +740,26 @@ export const useBoardStore = create((set, get) => ({
 
     if (error || !data) return null;
 
+    const { error: archiveError } = await upsertArchivedCard({
+      user_id: user.id,
+      item_type: ARCHIVED_CARD_TYPE.INBOX,
+      source_id: data.id,
+      board_id: null,
+      column_id: null,
+      title: data.title,
+      description: data.description || '',
+      due_date: data.due_date || null,
+      color: data.color || null,
+      created_at: data.created_at || new Date().toISOString(),
+    });
+
+    if (archiveError) {
+      await supabase.from('inbox_items').update({ is_archived: false }).eq('id', id);
+      return null;
+    }
+
     await get().loadInboxIdeas();
+    await get().fetchArchivedCards();
     return data;
   },
 
@@ -681,7 +773,14 @@ export const useBoardStore = create((set, get) => ({
 
     if (error || !data) return null;
 
+    const { error: archiveError } = await deleteArchivedCard(ARCHIVED_CARD_TYPE.INBOX, id);
+    if (archiveError) {
+      await supabase.from('inbox_items').update({ is_archived: true, position: data.position }).eq('id', id);
+      return null;
+    }
+
     await get().loadInboxIdeas();
+    await get().fetchArchivedCards();
     return data;
   },
 
@@ -689,7 +788,9 @@ export const useBoardStore = create((set, get) => ({
     const { error } = await supabase.from('inbox_items').delete().eq('id', id);
     if (error) return false;
 
+    await deleteArchivedCard(ARCHIVED_CARD_TYPE.INBOX, id);
     await get().loadInboxIdeas();
+    await get().fetchArchivedCards();
     return true;
   },
 
@@ -788,30 +889,142 @@ export const useBoardStore = create((set, get) => ({
 
   archiveTask: async (id) => {
     const currentTask = get().tasks.find((task) => task.id === id);
-    await supabase.from('tasks').update({ is_archived: true }).eq('id', id);
+    const user = await getAuthenticatedUser();
+    const currentColumn = get().columns.find((column) => column.id === currentTask?.column_id);
+
+    if (!currentTask || !user?.id) return null;
+
+    const { data, error } = await supabase.from('tasks').update({ is_archived: true }).eq('id', id).select().single();
+    if (error || !data) return null;
+
+    const { error: archiveError } = await upsertArchivedCard({
+      user_id: user.id,
+      item_type: ARCHIVED_CARD_TYPE.TASK,
+      source_id: data.id,
+      board_id: currentColumn?.board_id || get().currentBoardId || null,
+      column_id: data.column_id || null,
+      title: data.title,
+      description: data.description || '',
+      due_date: data.due_date || null,
+      color: data.color || null,
+      created_at: data.created_at || new Date().toISOString(),
+    });
+
+    if (archiveError) {
+      await supabase.from('tasks').update({ is_archived: false }).eq('id', id);
+      return null;
+    }
 
     set((state) => ({
       tasks: state.tasks.filter((task) => task.id !== id),
-      archivedTasks: currentTask ? [...state.archivedTasks, { ...currentTask, is_archived: true }] : state.archivedTasks,
+      archivedTasks: [toArchivedTaskRecord({
+        source_id: data.id,
+        title: data.title,
+        description: data.description,
+        due_date: data.due_date,
+        color: data.color,
+        column_id: data.column_id,
+        board_id: currentColumn?.board_id || get().currentBoardId || null,
+        created_at: data.created_at,
+        archived_at: new Date().toISOString(),
+      }), ...state.archivedTasks.filter((task) => task.id !== id)],
     }));
+
+    await get().fetchArchivedCards();
+    return data;
   },
 
   unarchiveTask: async (id) => {
     const archivedTask = get().archivedTasks.find((task) => task.id === id);
-    await supabase.from('tasks').update({ is_archived: false }).eq('id', id);
+    if (!archivedTask) return null;
+
+    const { data, error } = await supabase.from('tasks').update({ is_archived: false }).eq('id', id).select().single();
+    if (error || !data) return null;
+
+    const { error: archiveError } = await deleteArchivedCard(ARCHIVED_CARD_TYPE.TASK, id);
+    if (archiveError) {
+      await supabase.from('tasks').update({ is_archived: true }).eq('id', id);
+      return null;
+    }
 
     set((state) => ({
       archivedTasks: state.archivedTasks.filter((task) => task.id !== id),
-      tasks: archivedTask ? [...state.tasks, { ...archivedTask, is_archived: false }] : state.tasks,
+      tasks: [...state.tasks.filter((task) => task.id !== id), data],
     }));
+
+    await get().fetchArchivedCards();
+    return data;
   },
 
   deleteTask: async (id) => {
     await supabase.from('tasks').delete().eq('id', id);
+    await deleteArchivedCard(ARCHIVED_CARD_TYPE.TASK, id);
 
     set((state) => ({
       tasks: state.tasks.filter((task) => task.id !== id),
       archivedTasks: state.archivedTasks.filter((task) => task.id !== id),
     }));
+
+    await get().fetchArchivedCards();
+  },
+
+  restoreArchivedCard: async (item) => {
+    if (!item?.source_id || !item?.item_type) return null;
+
+    if (item.item_type === ARCHIVED_CARD_TYPE.TASK) {
+      const currentArchivedTasks = get().archivedTasks;
+
+      if (!currentArchivedTasks.some((task) => task.id === item.source_id)) {
+        set((state) => ({
+          archivedTasks: [
+            ...state.archivedTasks,
+            {
+              id: item.source_id,
+              title: item.title,
+              description: item.description || '',
+              due_date: item.due_date || null,
+              color: item.color || null,
+              column_id: item.column_id || null,
+              board_id: item.board_id || null,
+              is_archived: true,
+              archived_at: item.archived_at,
+              created_at: item.created_at || item.archived_at,
+            },
+          ],
+        }));
+      }
+
+      return get().unarchiveTask(item.source_id);
+    }
+
+    if (item.item_type === ARCHIVED_CARD_TYPE.INBOX) {
+      return get().unarchiveInboxIdea(item.source_id);
+    }
+
+    return null;
+  },
+
+  deleteArchivedCardPermanently: async (item) => {
+    if (!item?.source_id || !item?.item_type) return false;
+
+    if (item.item_type === ARCHIVED_CARD_TYPE.TASK) {
+      await supabase.from('tasks').delete().eq('id', item.source_id);
+      await deleteArchivedCard(ARCHIVED_CARD_TYPE.TASK, item.source_id);
+      set((state) => ({
+        archivedTasks: state.archivedTasks.filter((task) => task.id !== item.source_id),
+      }));
+      await get().fetchArchivedCards();
+      return true;
+    }
+
+    if (item.item_type === ARCHIVED_CARD_TYPE.INBOX) {
+      await supabase.from('inbox_items').delete().eq('id', item.source_id);
+      await deleteArchivedCard(ARCHIVED_CARD_TYPE.INBOX, item.source_id);
+      await get().loadInboxIdeas();
+      await get().fetchArchivedCards();
+      return true;
+    }
+
+    return false;
   },
 }));

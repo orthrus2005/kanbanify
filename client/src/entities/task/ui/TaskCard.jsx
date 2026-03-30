@@ -4,10 +4,10 @@ import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import {
   AlignLeft,
+  Archive,
   ArchiveRestore,
   CalendarDays,
   Clock3,
-  Copy,
   MoreHorizontal,
   PaintBucket,
   Tag,
@@ -354,7 +354,7 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
                     }}
                     className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-600 transition hover:bg-slate-50"
                   >
-                    <Copy size={14} />
+                    <Archive size={14} />
                     В архив
                   </button>
                 )}

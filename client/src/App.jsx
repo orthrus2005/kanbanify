@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowRightLeft,
+  Archive,
   CalendarDays,
   Inbox,
   LayoutGrid,
@@ -15,6 +17,7 @@ import { KanbanBoard } from './widgets/kanban/ui/KanbanBoard';
 import { InboxWorkspace } from './widgets/kanban/ui/InboxWorkspace';
 import { PlannerWorkspacePanel } from './widgets/kanban/ui/PlannerWorkspacePanel';
 import { PlannerWorkspace } from './widgets/planner/ui/PlannerWorkspace';
+import { ArchiveDrawer } from './widgets/archive/ui/ArchiveDrawer';
 import { AuthForm } from './features/auth/ui/AuthForm';
 import { ConfirmDialog } from './shared/ui/ConfirmDialog';
 
@@ -76,6 +79,10 @@ function App() {
   const { boards = [], publicBoards = [], currentBoardId, setCurrentBoard, createBoard, fetchBoards, isLoading } =
     useBoardStore();
   const [isBoardPickerOpen, setIsBoardPickerOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const userMenuButtonRef = useRef(null);
+  const userMenuRef = useRef(null);
   const [workspacePanels, setWorkspacePanels] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_WORKSPACE_PANELS;
 
@@ -118,6 +125,33 @@ function App() {
     };
   }, [isBoardPickerOpen]);
 
+  useEffect(() => {
+    if (!isUserMenuOpen) return undefined;
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsUserMenuOpen(false);
+    };
+
+    const handleOutside = (event) => {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(event.target) &&
+        userMenuButtonRef.current &&
+        !userMenuButtonRef.current.contains(event.target)
+      ) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('mousedown', handleOutside);
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('mousedown', handleOutside);
+    };
+  }, [isUserMenuOpen]);
+
   const allBoards = useMemo(() => dedupeBoards([...boards, ...publicBoards]), [boards, publicBoards]);
   const currentBoard = useMemo(() => allBoards.find((board) => board.id === currentBoardId) ?? null, [allBoards, currentBoardId]);
   const activeWorkspaceLabel = useMemo(() => getActiveWorkspaceLabel(workspacePanels), [workspacePanels]);
@@ -125,8 +159,48 @@ function App() {
     () => publicBoards.filter((board) => !boards.some((ownBoard) => ownBoard.id === board.id)),
     [publicBoards, boards]
   );
+  const userMenuStyle = useMemo(() => {
+    if (!isUserMenuOpen || !userMenuButtonRef.current || typeof window === 'undefined') return null;
+
+    const rect = userMenuButtonRef.current.getBoundingClientRect();
+    const width = 224;
+    const safeGap = 16;
+    const left = Math.max(safeGap, rect.right - width);
+
+    return {
+      position: 'fixed',
+      top: `${rect.bottom + 12}px`,
+      left: `${left}px`,
+      width: `${width}px`,
+      zIndex: 12000,
+    };
+  }, [isUserMenuOpen]);
 
   if (!user) return <AuthForm />;
+
+  const userMenuMarkup =
+    isUserMenuOpen && userMenuStyle && typeof document !== 'undefined'
+      ? createPortal(
+          <div ref={userMenuRef} style={userMenuStyle} className="rounded-[22px] border border-slate-200 bg-white p-2 shadow-[0_24px_60px_rgba(15,23,42,0.16)]">
+            <div className="mb-2 rounded-[18px] bg-slate-50 px-3 py-3">
+              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Профиль</div>
+              <div className="mt-1 truncate text-sm font-semibold text-slate-800">{user.email || 'Пользователь'}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsArchiveOpen(true);
+                setIsUserMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-3 rounded-[16px] px-3 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              <Archive size={16} />
+              Архив
+            </button>
+          </div>,
+          document.body
+        )
+      : null;
 
   const handleCreateBoard = async () => {
     const title = prompt('Название доски:');
@@ -239,6 +313,8 @@ function App() {
   return (
     <div className="h-[100dvh] overflow-hidden bg-[#202228] p-0 md:p-3">
       <ConfirmDialog />
+      <ArchiveDrawer isOpen={isArchiveOpen} onClose={() => setIsArchiveOpen(false)} />
+      {userMenuMarkup}
 
       {isBoardPickerOpen ? (
         <div className="fixed inset-0 z-[1200] flex items-end justify-center bg-slate-950/38 backdrop-blur-sm md:items-center">
@@ -378,8 +454,16 @@ function App() {
               >
                 <LogOut size={16} />
               </button>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-orange-500 text-sm font-black text-white shadow-[0_12px_28px_rgba(249,115,22,0.25)]">
-                {user.email?.[0]?.toUpperCase() || <User2 size={16} />}
+              <div className="relative">
+                <button
+                  ref={userMenuButtonRef}
+                  type="button"
+                  onClick={() => setIsUserMenuOpen((value) => !value)}
+                  className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-orange-500 text-sm font-black text-white shadow-[0_12px_28px_rgba(249,115,22,0.25)] transition hover:brightness-105"
+                  aria-label="Открыть меню пользователя"
+                >
+                  {user.email?.[0]?.toUpperCase() || <User2 size={16} />}
+                </button>
               </div>
             </div>
           </div>

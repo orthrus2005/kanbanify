@@ -371,15 +371,15 @@ export const InboxIdeaCard = ({ idea, showArchived = false, isOverlay = false, d
         ref={setNodeRef}
         style={style}
         onClick={openModal}
-        className={`kb-card kb-card--inbox group relative ${isOverlay ? 'kb-card--overlay' : ''}`}
+        className={`kb-card kb-card--inbox group relative ${isMenuOpen ? 'z-[220]' : 'z-[1]'} ${isOverlay ? 'kb-card--overlay' : ''}`}
       >
         {!isOverlay ? (
-          <div ref={menuRef} className="absolute right-2 top-2 z-20">
+          <div ref={menuRef} className="absolute right-2 top-2 z-[260]">
             <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsMenuOpen((value) => !value); }} className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 opacity-100 transition hover:bg-white/10 hover:text-white">
               <MoreHorizontal size={16} />
             </button>
             {isMenuOpen ? (
-              <div className="absolute right-0 top-10 z-30 w-48 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
+              <div className="absolute right-0 top-10 z-[300] w-48 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl">
                 {showArchived ? (
                   <button onClick={async (event) => { event.stopPropagation(); await unarchiveInboxIdea(idea.id); setIsMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-600 transition hover:bg-slate-50">
                     <ArchiveRestore size={14} />Вернуть из архива
