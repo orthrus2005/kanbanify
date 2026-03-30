@@ -110,7 +110,7 @@ export const BoardArchiveDialog = ({ isOpen, onClose }) => {
             </div>
             <h3 className="text-2xl font-black tracking-tight text-slate-900">Архив задач</h3>
             <p className="mt-1 text-sm text-slate-500">
-              Здесь лежат задачи, отправленные в архив. Их можно вернуть обратно в исходную колонку или удалить.
+              Здесь лежат задачи, отправленные в архив из досок. Их можно вернуть обратно в исходную колонку или удалить.
             </p>
           </div>
 
