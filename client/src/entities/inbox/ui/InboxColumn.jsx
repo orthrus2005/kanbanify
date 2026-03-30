@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useDroppable } from '@dnd-kit/core';
 import { Archive, Check, ChevronRight, ImagePlus, Inbox, ListFilter, Menu, PaintBucket, Plus, Settings, SlidersHorizontal, X } from 'lucide-react';
 import { useBoardStore } from '../../board/model/store';
+import { useAuthStore } from '../../session/model/authStore';
 import { InboxIdeaCard } from './InboxIdeaCard';
 
 const photoPresets = [
@@ -51,8 +52,41 @@ const getDueBucket = (item) => {
   return 'future';
 };
 
+const compressImageToDataUrl = (file, maxSide = 1920, quality = 0.86) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const longestSide = Math.max(image.width, image.height) || 1;
+        const scale = Math.min(1, maxSide / longestSide);
+        const targetWidth = Math.max(1, Math.round(image.width * scale));
+        const targetHeight = Math.max(1, Math.round(image.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+
+        const context = canvas.getContext('2d');
+        if (!context) {
+          reject(new Error('Canvas is not available'));
+          return;
+        }
+
+        context.drawImage(image, 0, 0, targetWidth, targetHeight);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      image.onerror = () => reject(new Error('Failed to read image'));
+      image.src = reader.result;
+    };
+
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+
 export const InboxColumn = ({ expanded = false, contained = false }) => {
   const { inboxIdeas, archivedInboxIdeas, addInboxIdea } = useBoardStore();
+  const { user, updateUserMetadata } = useAuthStore();
   const { setNodeRef, isOver } = useDroppable({ id: 'inbox' });
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -77,6 +111,33 @@ export const InboxColumn = ({ expanded = false, contained = false }) => {
   const fileInputRef = useRef(null);
 
   const selectedBackground = customBackground || backgroundValue;
+
+  useEffect(() => {
+    const savedBackground = user?.user_metadata?.inbox_background;
+
+    if (savedBackground?.value) {
+      if (savedBackground.isCustom) {
+        setCustomBackground(savedBackground.value);
+      } else {
+        setCustomBackground('');
+        setBackgroundValue(savedBackground.value);
+      }
+      return;
+    }
+
+    setCustomBackground('');
+    setBackgroundValue(photoPresets[0].value);
+  }, [user]);
+
+  const persistInboxBackground = async (value, isCustom = false) => {
+    await updateUserMetadata({
+      inbox_background: {
+        value,
+        isCustom,
+      },
+    });
+  };
+
   const getPopoverStyle = (anchorRef, width) => {
     if (typeof window === 'undefined') return {};
 
@@ -165,9 +226,16 @@ export const InboxColumn = ({ expanded = false, contained = false }) => {
   const handleUploadBackground = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const objectUrl = URL.createObjectURL(file);
-    setCustomBackground(`linear-gradient(180deg, rgba(18,24,38,0.12), rgba(18,24,38,0.45)), url(${objectUrl})`);
-    setIsBackgroundOpen(false);
+    compressImageToDataUrl(file)
+      .then(async (dataUrl) => {
+        const nextBackground = `linear-gradient(180deg, rgba(18,24,38,0.12), rgba(18,24,38,0.45)), url(${dataUrl})`;
+        setCustomBackground(nextBackground);
+        await persistInboxBackground(nextBackground, true);
+        setIsBackgroundOpen(false);
+      })
+      .finally(() => {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      });
   };
 
   const handleAddIdea = async () => {
@@ -473,6 +541,7 @@ export const InboxColumn = ({ expanded = false, contained = false }) => {
                   onClick={() => {
                     setCustomBackground('');
                     setBackgroundValue(preset.value);
+                    void persistInboxBackground(preset.value, false);
                     setIsBackgroundOpen(false);
                   }}
                   className="h-20 rounded-2xl bg-cover bg-center"
@@ -489,6 +558,7 @@ export const InboxColumn = ({ expanded = false, contained = false }) => {
                   onClick={() => {
                     setCustomBackground('');
                     setBackgroundValue(preset.value);
+                    void persistInboxBackground(preset.value, false);
                     setIsBackgroundOpen(false);
                   }}
                   className="h-20 rounded-2xl"

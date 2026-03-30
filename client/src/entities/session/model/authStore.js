@@ -49,4 +49,23 @@ export const useAuthStore = create((set) => ({
     await supabase.auth.signOut();
     set({ user: null, error: '' });
   },
+
+  updateUserMetadata: async (updates) => {
+    const { data, error } = await supabase.auth.updateUser({
+      data: {
+        ...(updates || {}),
+      },
+    });
+
+    if (error) {
+      set({ error: error.message });
+      return null;
+    }
+
+    if (data?.user) {
+      set({ user: data.user, error: '' });
+    }
+
+    return data?.user || null;
+  },
 }));
