@@ -190,7 +190,7 @@ export const KanbanBoard = ({ showInbox = true, inboxOnly = false, showHeader = 
         ) : (
           <div
             className={`custom-scrollbar relative z-[1] flex-1 overflow-auto ${
-              inboxOnly && inboxExpanded ? 'px-0 pb-28 pt-0 sm:pb-32' : 'px-3 pb-28 pt-3 sm:px-6 sm:pb-32 sm:pt-5'
+              inboxOnly && inboxExpanded ? 'px-0 pb-0 pt-0' : 'px-3 pb-28 pt-3 sm:px-6 sm:pb-32 sm:pt-5'
             } ${inboxOnly && !inboxExpanded ? 'flex items-start justify-center' : ''}`}
           >
             <div className={`items-start ${inboxOnly ? (inboxExpanded ? 'h-full w-full min-w-0' : 'w-full max-w-[760px]') : 'flex min-h-full min-w-max gap-3 sm:gap-5'}`}>

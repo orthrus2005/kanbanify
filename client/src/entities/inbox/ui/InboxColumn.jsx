@@ -10,19 +10,19 @@ const photoPresets = [
     id: 'glacier',
     label: 'Ледник',
     value:
-      'linear-gradient(180deg, rgba(18,24,38,0.12), rgba(18,24,38,0.34)), url(https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2400&q=92)',
+      'linear-gradient(180deg, rgba(18,24,38,0.1), rgba(18,24,38,0.28)), url(https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=max&w=3840&q=100)',
   },
   {
     id: 'canyon',
     label: 'Каньон',
     value:
-      'linear-gradient(180deg, rgba(18,24,38,0.08), rgba(18,24,38,0.32)), url(https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=2400&q=92)',
+      'linear-gradient(180deg, rgba(18,24,38,0.08), rgba(18,24,38,0.28)), url(https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=max&w=3840&q=100)',
   },
   {
     id: 'ocean',
     label: 'Океан',
     value:
-      'linear-gradient(180deg, rgba(18,24,38,0.08), rgba(18,24,38,0.34)), url(https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2400&q=92)',
+      'linear-gradient(180deg, rgba(18,24,38,0.08), rgba(18,24,38,0.28)), url(https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=max&w=3840&q=100)',
   },
 ];
 
@@ -184,7 +184,7 @@ export const InboxColumn = ({ expanded = false, contained = false }) => {
 
   const backgroundRadiusClass = expanded ? 'rounded-[30px]' : contained ? 'rounded-[26px]' : 'rounded-[24px]';
   const overlayClassName = expanded
-    ? 'flex h-full min-h-0 items-start justify-center rounded-[30px] bg-slate-950/10 p-4 pt-6 sm:p-6 sm:pt-8'
+    ? 'flex h-full min-h-0 items-start justify-center rounded-[30px] bg-slate-950/6 p-4 pt-6 sm:p-6 sm:pt-8'
     : contained
       ? 'flex h-full min-h-0 flex-col rounded-[26px] bg-slate-950/14 p-3'
       : 'rounded-[24px] bg-slate-950/18 p-3';
@@ -206,11 +206,11 @@ export const InboxColumn = ({ expanded = false, contained = false }) => {
         style={{
           backgroundImage: selectedBackground,
           backgroundSize: 'cover',
-          backgroundPosition: expanded ? 'center 78%' : contained ? 'center center' : 'center bottom',
+          backgroundPosition: expanded ? 'center center' : contained ? 'center center' : 'center bottom',
           backgroundRepeat: 'no-repeat',
         }}
       />
-      <div className={`relative backdrop-blur-[1px] ${overlayClassName}`}>
+      <div className={`relative ${expanded ? '' : 'backdrop-blur-[1px]'} ${overlayClassName}`}>
         <div className={cardClassName} style={expanded ? { height: 'min(60dvh, 600px)' } : undefined}>
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2 text-slate-900">
