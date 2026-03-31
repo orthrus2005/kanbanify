@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 
-export const AddTaskForm = ({ onAdd }) => {
+export const AddTaskForm = ({ onAdd, disabled = false }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!title.trim()) return;
+    if (disabled || !title.trim()) return;
 
     onAdd(title.trim());
     setTitle('');
@@ -17,8 +17,10 @@ export const AddTaskForm = ({ onAdd }) => {
   if (!isEditing) {
     return (
       <button
+        type="button"
+        disabled={disabled}
         onClick={() => setIsEditing(true)}
-        className="flex w-full items-center gap-2 rounded-2xl px-3 py-3 text-sm font-semibold text-slate-500 transition hover:bg-slate-100/80 hover:text-slate-800"
+        className="flex w-full items-center gap-2 rounded-2xl px-3 py-3 text-sm font-semibold text-slate-500 transition hover:bg-slate-100/80 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
       >
         <Plus size={16} />
         Добавить карточку
@@ -32,6 +34,7 @@ export const AddTaskForm = ({ onAdd }) => {
         autoFocus
         rows={3}
         value={title}
+        disabled={disabled}
         onChange={(event) => setTitle(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) {
@@ -39,11 +42,11 @@ export const AddTaskForm = ({ onAdd }) => {
           }
         }}
         placeholder="Что нужно сделать?"
-        className="mb-3 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+        className="mb-3 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
       />
 
       <div className="flex items-center gap-2">
-        <button type="submit" className="rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700">
+        <button type="submit" disabled={disabled} className="rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
           Добавить
         </button>
         <button

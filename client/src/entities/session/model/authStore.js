@@ -1,39 +1,74 @@
 import { create } from 'zustand';
 import { supabase } from '../../../shared/api/supabase';
 
+let authSubscription = null;
+let checkSessionPromise = null;
+
 export const useAuthStore = create((set) => ({
   user: null,
   isLoading: true,
   error: '',
 
   checkSession: async () => {
-    set({ isLoading: true, error: '' });
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (session) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      set({ user: user || session.user || null, isLoading: false });
-    } else {
-      set({ user: null, isLoading: false });
+    if (checkSessionPromise) {
+      return checkSessionPromise;
     }
 
-    supabase.auth.onAuthStateChange(async (_event, sessionData) => {
-      if (!sessionData) {
-        set({ user: null });
-        return;
+    set({ isLoading: true, error: '' });
+
+    if (!authSubscription) {
+      const { data } = supabase.auth.onAuthStateChange((_event, sessionData) => {
+        set({
+          user: sessionData?.user ?? null,
+          isLoading: false,
+          error: '',
+        });
+      });
+
+      authSubscription = data.subscription;
+    }
+
+    checkSessionPromise = (async () => {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) {
+          throw error;
+        }
+
+        set({
+          user: session?.user ?? null,
+          isLoading: false,
+          error: '',
+        });
+
+        return session?.user ?? null;
+      } catch (error) {
+        if (error?.name === 'AuthSessionMissingError') {
+          set({ user: null, isLoading: false, error: '' });
+          return null;
+        }
+
+        if (error?.name === 'AbortError') {
+          set({ isLoading: false });
+          return null;
+        }
+
+        set({
+          user: null,
+          isLoading: false,
+          error: error?.message || 'Не удалось проверить сессию',
+        });
+        return null;
+      } finally {
+        checkSessionPromise = null;
       }
+    })();
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      set({ user: user || sessionData.user || null });
-    });
+    return checkSessionPromise;
   },
 
   signIn: async (email, password) => {
@@ -79,14 +114,10 @@ export const useAuthStore = create((set) => ({
       return null;
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user || data?.user) {
-      set({ user: user || data.user, error: '' });
+    if (data?.user) {
+      set({ user: data.user, error: '' });
     }
 
-    return user || data?.user || null;
+    return data?.user || null;
   },
 }));

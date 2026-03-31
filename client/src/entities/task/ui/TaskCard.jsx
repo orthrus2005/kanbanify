@@ -2,18 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import {
-  AlignLeft,
-  Archive,
-  ArchiveRestore,
-  CalendarDays,
-  Clock3,
-  MoreHorizontal,
-  PaintBucket,
-  Tag,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { AlignLeft, Archive, ArchiveRestore, CalendarDays, MoreHorizontal, PaintBucket, Tag, Trash2, X } from 'lucide-react';
 import { useBoardStore } from '../../board/model/store';
 import { useConfirmStore } from '../../../shared/model/confirmStore';
 
@@ -48,15 +37,16 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
     color: task.color || '',
   });
 
-  const { columns, updateTask, deleteTask, archiveTask, unarchiveTask } = useBoardStore();
+  const { columns, currentBoardAccess, updateTask, deleteTask, archiveTask, unarchiveTask } = useBoardStore();
   const requestConfirm = useConfirmStore((state) => state.requestConfirm);
   const dragFlagRef = useRef(false);
   const menuRef = useRef(null);
   const modalRef = useRef(null);
+  const canEditCurrentBoard = Boolean(currentBoardAccess?.canEdit);
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: dndId || `task:${task.id}`,
-    disabled: isMenuOpen || isModalOpen || task.is_archived || isOverlay,
+    disabled: isMenuOpen || isModalOpen || task.is_archived || isOverlay || !canEditCurrentBoard,
   });
 
   useEffect(() => {
@@ -125,9 +115,7 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
     [columns, task.column_id]
   );
 
-  const dueLabel = task.due_date
-    ? new Date(task.due_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-    : null;
+  const dueLabel = task.due_date ? new Date(task.due_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : null;
 
   const baseChipStyle = task.color
     ? {
@@ -145,7 +133,7 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
       }
     : undefined;
 
-  const openEditModal = () => {
+  const openTaskModal = () => {
     if (dragFlagRef.current) {
       dragFlagRef.current = false;
       return;
@@ -156,6 +144,11 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
   };
 
   const handleSave = async () => {
+    if (!canEditCurrentBoard) {
+      setIsModalOpen(false);
+      return;
+    }
+
     await updateTask(task.id, {
       title: edit.title.trim() || task.title,
       description: edit.desc,
@@ -165,14 +158,24 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
     setIsModalOpen(false);
   };
 
+  const handleDelete = async (event) => {
+    event.stopPropagation();
+    const ok = await requestConfirm({
+      title: 'Удалить задачу',
+      message: `Карточка "${task.title}" будет удалена без возможности восстановления.`,
+    });
+
+    if (!ok) return;
+
+    await deleteTask(task.id);
+    setIsMenuOpen(false);
+  };
+
   const modalMarkup =
     isModalOpen && typeof document !== 'undefined'
       ? createPortal(
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-md sm:p-6">
-            <div
-              ref={modalRef}
-              className="kb-edit-modal mx-auto max-h-[calc(100dvh-24px)] w-full max-w-5xl overflow-y-auto rounded-[28px] sm:max-h-[calc(100dvh-48px)]"
-            >
+            <div ref={modalRef} className="kb-edit-modal mx-auto max-h-[calc(100dvh-24px)] w-full max-w-5xl overflow-y-auto rounded-[28px] sm:max-h-[calc(100dvh-48px)]">
               <div className="border-b border-slate-200/70 px-5 py-4 sm:px-7">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
@@ -193,10 +196,13 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
                         </span>
                       ) : null}
                     </div>
-                    <h3 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">Редактирование задачи</h3>
+                    <h3 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
+                      {canEditCurrentBoard ? 'Редактирование задачи' : 'Просмотр задачи'}
+                    </h3>
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => setIsModalOpen(false)}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                     aria-label="Закрыть"
@@ -213,9 +219,10 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
                       <span className="mb-2 block text-sm font-semibold text-slate-600">Название</span>
                       <input
                         value={edit.title}
+                        readOnly={!canEditCurrentBoard}
                         onChange={(event) => setEdit((state) => ({ ...state, title: event.target.value }))}
                         placeholder="Название задачи"
-                        className="kb-edit-input px-4 py-3"
+                        className="kb-edit-input px-4 py-3 read-only:cursor-default read-only:opacity-90"
                       />
                     </label>
 
@@ -227,9 +234,10 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
                       <textarea
                         rows={10}
                         value={edit.desc}
+                        readOnly={!canEditCurrentBoard}
                         onChange={(event) => setEdit((state) => ({ ...state, desc: event.target.value }))}
                         placeholder="Добавьте описание задачи"
-                        className="kb-edit-input min-h-[220px] resize-y px-4 py-3 sm:min-h-[320px]"
+                        className="kb-edit-input min-h-[220px] resize-y px-4 py-3 sm:min-h-[320px] read-only:cursor-default read-only:opacity-90"
                       />
                     </label>
                   </div>
@@ -250,40 +258,46 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
                           <button
                             key={color}
                             type="button"
+                            disabled={!canEditCurrentBoard}
                             onClick={() => setEdit((state) => ({ ...state, color }))}
-                            className={`h-11 rounded-2xl border ${edit.color === color ? 'border-slate-900' : 'border-slate-200'}`}
+                            className={`h-11 rounded-2xl border ${edit.color === color ? 'border-slate-900' : 'border-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
                             style={{ backgroundColor: color }}
                             aria-label={`Выбрать цвет ${color}`}
                           />
                         ))}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setEdit((state) => ({ ...state, color: '' }))}
-                        className="mt-3 text-sm font-medium text-slate-500 transition hover:text-slate-700"
-                      >
-                        Сбросить цвет
-                      </button>
+                      {canEditCurrentBoard ? (
+                        <button
+                          type="button"
+                          onClick={() => setEdit((state) => ({ ...state, color: '' }))}
+                          className="mt-3 text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                        >
+                          Сбросить цвет
+                        </button>
+                      ) : null}
                     </div>
 
                     <label className="block rounded-3xl border border-slate-200 bg-slate-50/85 p-5">
                       <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
                         <CalendarDays size={15} />
-                        Срок
+                        Срок выполнения
                       </span>
                       <input
                         type="datetime-local"
                         value={edit.date}
+                        disabled={!canEditCurrentBoard}
                         onChange={(event) => setEdit((state) => ({ ...state, date: event.target.value }))}
-                        className="kb-edit-input min-w-0 px-3 py-2.5"
+                        className="kb-edit-input min-w-0 px-3 py-2.5 disabled:cursor-not-allowed disabled:opacity-60"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setEdit((state) => ({ ...state, date: '' }))}
-                        className="mt-3 text-sm font-medium text-slate-500 transition hover:text-slate-700"
-                      >
-                        Очистить дату
-                      </button>
+                      {canEditCurrentBoard ? (
+                        <button
+                          type="button"
+                          onClick={() => setEdit((state) => ({ ...state, date: '' }))}
+                          className="mt-3 text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                        >
+                          Очистить дату
+                        </button>
+                      ) : null}
                     </label>
                   </aside>
                 </div>
@@ -291,17 +305,21 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
 
               <div className="flex flex-col-reverse gap-3 border-t border-slate-200/70 bg-slate-50/80 px-5 py-4 sm:flex-row sm:justify-end sm:px-7">
                 <button
+                  type="button"
                   onClick={() => setIsModalOpen(false)}
                   className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 sm:w-auto"
                 >
-                  Отмена
+                  Закрыть
                 </button>
-                <button
-                  onClick={handleSave}
-                  className="w-full rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 sm:w-auto"
-                >
-                  Сохранить
-                </button>
+                {canEditCurrentBoard ? (
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    className="w-full rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 sm:w-auto"
+                  >
+                    Сохранить
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>,
@@ -311,15 +329,11 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
 
   return (
     <>
-      <div
-        ref={setNodeRef}
-        style={style}
-        onClick={openEditModal}
-        className={`kb-card group relative ${isOverlay ? 'kb-card--overlay' : ''}`}
-      >
-        {!isOverlay && (
+      <div ref={setNodeRef} style={style} onClick={openTaskModal} className={`kb-card group relative ${isOverlay ? 'kb-card--overlay' : ''}`}>
+        {!isOverlay && canEditCurrentBoard ? (
           <div ref={menuRef} className="absolute right-2 top-2 z-20">
             <button
+              type="button"
               onClick={(event) => {
                 event.stopPropagation();
                 setIsMenuOpen((value) => !value);
@@ -331,10 +345,11 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
               <MoreHorizontal size={16} />
             </button>
 
-            {isMenuOpen && (
+            {isMenuOpen ? (
               <div className="absolute right-0 top-10 z-30 w-48 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
                 {task.is_archived ? (
                   <button
+                    type="button"
                     onClick={(event) => {
                       event.stopPropagation();
                       unarchiveTask(task.id);
@@ -347,6 +362,7 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
                   </button>
                 ) : (
                   <button
+                    type="button"
                     onClick={(event) => {
                       event.stopPropagation();
                       archiveTask(task.id);
@@ -358,50 +374,49 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
                     В архив
                   </button>
                 )}
-
                 <button
-                  onClick={async (event) => {
-                    event.stopPropagation();
-                    const ok = await requestConfirm({
-                      title: 'Удалить карточку',
-                      message: `Карточка "${task.title}" будет удалена без возможности восстановления.`,
-                    });
-
-                    if (ok) {
-                      deleteTask(task.id);
-                      setIsMenuOpen(false);
-                    }
-                  }}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                  type="button"
+                  onClick={handleDelete}
+                  className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-500 transition hover:bg-rose-50"
                 >
                   <Trash2 size={14} />
                   Удалить
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
-        )}
+        ) : null}
 
-        <div {...(isOverlay ? {} : listeners)} {...(isOverlay ? {} : attributes)} className={isOverlay ? '' : 'kb-dnd-handle'}>
-          <div className="mb-3 flex flex-wrap items-center gap-2 pr-8">
-            <span className="kb-chip bg-slate-100 text-slate-600" style={baseChipStyle}>
+        <div
+          className="space-y-3"
+          {...attributes}
+          {...listeners}
+          onPointerDownCapture={() => {
+            dragFlagRef.current = false;
+          }}
+        >
+          <div className="flex flex-wrap gap-2 pr-8">
+            <span className="kb-chip bg-slate-100 text-slate-700" style={baseChipStyle}>
+              <Tag size={12} />
               {columnTitle}
             </span>
             {dueLabel ? (
               <span className="kb-chip bg-blue-100 text-blue-700" style={dueChipStyle}>
-                <Clock3 size={12} />
+                <CalendarDays size={12} />
                 {dueLabel}
               </span>
             ) : null}
           </div>
 
-          <h4 className="pr-8 text-sm font-bold leading-6 text-slate-800">{task.title}</h4>
+          <div className="space-y-2">
+            <h4 className="text-[15px] font-bold text-slate-800">{task.title}</h4>
+            {task.description ? <p className="line-clamp-3 text-sm leading-6 text-slate-500">{task.description}</p> : null}
+          </div>
 
-          {task.description ? (
-            <p className="mt-2 text-sm leading-6 text-slate-600">{task.description}</p>
-          ) : (
-            <p className="mt-2 text-sm text-slate-500">Нажмите, чтобы добавить описание, цвет и срок.</p>
-          )}
+          <div className="flex items-center justify-between gap-3 text-xs text-slate-400">
+            <span>{task.created_at ? new Date(task.created_at).toLocaleDateString('ru-RU') : 'Без даты'}</span>
+            {task.due_date ? <span>{new Date(task.due_date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span> : null}
+          </div>
         </div>
       </div>
 

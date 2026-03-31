@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Palette, Trash2 } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
-import { TaskCard } from '../../task/ui/TaskCard';
+import { ChevronLeft, ChevronRight, Palette, Trash2 } from 'lucide-react';
 import { useBoardStore } from '../../board/model/store';
-import { useConfirmStore } from '../../../shared/model/confirmStore';
+import { TaskCard } from '../../task/ui/TaskCard';
 import { AddTaskForm } from '../../task/create/ui/AddTaskForm';
+import { useConfirmStore } from '../../../shared/model/confirmStore';
 import { useAuthStore } from '../../session/model/authStore';
 
 const COLUMN_COLOR_PRESETS = [
@@ -57,7 +57,7 @@ const getColumnUiKey = (userId, boardId, columnId) =>
 
 export const Column = ({ column, tasks }) => {
   const { setNodeRef, isOver } = useDroppable({ id: `column:${column.id}` });
-  const { addTask, deleteColumn, updateColumnTitle, currentBoardId } = useBoardStore();
+  const { addTask, deleteColumn, updateColumnTitle, currentBoardId, currentBoardAccess } = useBoardStore();
   const requestConfirm = useConfirmStore((state) => state.requestConfirm);
   const user = useAuthStore((state) => state.user);
 
@@ -69,6 +69,7 @@ export const Column = ({ column, tasks }) => {
 
   const titleInputRef = useRef(null);
   const colorMenuRef = useRef(null);
+  const canEditCurrentBoard = Boolean(currentBoardAccess?.canEdit);
 
   useEffect(() => {
     setTitleDraft(column.title);
@@ -129,9 +130,11 @@ export const Column = ({ column, tasks }) => {
   );
 
   const handleDeleteColumn = async () => {
+    if (!canEditCurrentBoard) return;
+
     const ok = await requestConfirm({
       title: 'Удалить колонку',
-      message: `Колонка "${column.title}" и все ее карточки будут удалены.`,
+      message: `Колонка "${column.title}" и все её карточки будут удалены.`,
     });
 
     if (ok) {
@@ -140,6 +143,12 @@ export const Column = ({ column, tasks }) => {
   };
 
   const handleTitleSave = async () => {
+    if (!canEditCurrentBoard) {
+      setIsEditingTitle(false);
+      setTitleDraft(column.title);
+      return;
+    }
+
     const trimmedTitle = titleDraft.trim();
     setIsEditingTitle(false);
 
@@ -186,9 +195,11 @@ export const Column = ({ column, tasks }) => {
           ) : (
             <button
               type="button"
-              onDoubleClick={() => setIsEditingTitle(true)}
+              onDoubleClick={() => {
+                if (canEditCurrentBoard) setIsEditingTitle(true);
+              }}
               className={`text-left ${isCollapsed ? 'flex h-[150px] items-center justify-center' : ''}`}
-              title="Двойной клик для переименования"
+              title={canEditCurrentBoard ? 'Двойной клик для переименования' : column.title}
             >
               <h3
                 className={`font-black uppercase tracking-[0.18em] text-slate-700 ${
@@ -205,6 +216,7 @@ export const Column = ({ column, tasks }) => {
 
         <div className={`relative flex gap-1 ${isCollapsed ? 'mt-1 flex-col' : ''}`} ref={colorMenuRef}>
           <button
+            type="button"
             onClick={() => setIsCollapsed((value) => !value)}
             className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-white/60 hover:text-slate-800"
             aria-label={isCollapsed ? 'Развернуть колонку' : 'Свернуть колонку'}
@@ -212,16 +224,20 @@ export const Column = ({ column, tasks }) => {
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
 
-          <button
-            onClick={() => setIsColorMenuOpen((value) => !value)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-white/60 hover:text-slate-800"
-            aria-label="Изменить цвет колонки"
-          >
-            <Palette size={16} />
-          </button>
-
-          {!isCollapsed ? (
+          {canEditCurrentBoard ? (
             <button
+              type="button"
+              onClick={() => setIsColorMenuOpen((value) => !value)}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-white/60 hover:text-slate-800"
+              aria-label="Изменить цвет колонки"
+            >
+              <Palette size={16} />
+            </button>
+          ) : null}
+
+          {!isCollapsed && canEditCurrentBoard ? (
+            <button
+              type="button"
               onClick={handleDeleteColumn}
               className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-rose-50 hover:text-rose-500"
               aria-label="Удалить колонку"
@@ -230,16 +246,13 @@ export const Column = ({ column, tasks }) => {
             </button>
           ) : null}
 
-          {isColorMenuOpen && (
-            <div
-              className={`absolute z-30 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ${
-                isCollapsed ? 'left-full top-0 ml-2' : 'right-0 top-10'
-              }`}
-            >
+          {isColorMenuOpen && canEditCurrentBoard ? (
+            <div className={`absolute z-30 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ${isCollapsed ? 'left-full top-0 ml-2' : 'right-0 top-10'}`}>
               <div className="grid grid-cols-3 gap-2">
                 {COLUMN_COLOR_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
+                    type="button"
                     onClick={() => {
                       setColorId(preset.id);
                       setIsColorMenuOpen(false);
@@ -251,15 +264,13 @@ export const Column = ({ column, tasks }) => {
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
       <div
         ref={setNodeRef}
-        className={`kb-dropzone flex flex-col gap-3 ${isOver ? 'kb-dropzone--over' : ''} ${
-          isCollapsed ? 'min-h-[120px] items-center justify-center' : ''
-        }`}
+        className={`kb-dropzone flex flex-col gap-3 ${isOver ? 'kb-dropzone--over' : ''} ${isCollapsed ? 'min-h-[120px] items-center justify-center' : ''}`}
       >
         {!isCollapsed ? (
           tasks.length > 0 ? (
@@ -276,7 +287,7 @@ export const Column = ({ column, tasks }) => {
 
       {!isCollapsed ? (
         <div className="mt-4">
-          <AddTaskForm onAdd={(title) => addTask(column.id, title)} />
+          <AddTaskForm onAdd={(title) => addTask(column.id, title)} disabled={!canEditCurrentBoard} />
         </div>
       ) : null}
     </div>

@@ -8,6 +8,17 @@ const ARCHIVED_CARD_TYPE = {
   TASK: 'task',
   INBOX: 'inbox',
 };
+let boardRealtimeChannel = null;
+let boardRealtimeBoardId = null;
+
+const DEFAULT_BOARD_ACCESS = {
+  isOwner: false,
+  isMember: false,
+  canView: false,
+  canEdit: false,
+  isPublic: false,
+  shareId: '',
+};
 
 const readLegacyInboxState = (userId) => {
   if (typeof window === 'undefined') {
@@ -85,10 +96,119 @@ const getAuthenticatedUser = async () => {
   if (authUser?.id) return authUser;
 
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  return user;
+  return session?.user ?? null;
+};
+
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+
+const dedupeBoards = (items) => Array.from(new Map((items || []).filter(Boolean).map((board) => [board.id, board])).values());
+
+const mergeBoardIntoCollection = (collection, board, predicate = () => true) => {
+  if (!board) return collection;
+  const filtered = (collection || []).filter((item) => item.id !== board.id);
+  return predicate(board) ? [...filtered, board] : filtered;
+};
+
+const fetchBoardMembersFromDb = async (boardId) => {
+  if (!boardId) return [];
+
+  const { data, error } = await supabase.from('board_members').select('*').eq('board_id', boardId).order('created_at', { ascending: true });
+  if (error) return [];
+  return (data || []).map((member) => ({
+    ...member,
+    email: normalizeEmail(member.email),
+  }));
+};
+
+const fetchBoardGraph = async (boardId) => {
+  if (!boardId) return { columns: [], tasks: [] };
+
+  const { data: columns } = await supabase.from('columns').select('*').eq('board_id', boardId).order('created_at');
+  if (!columns?.length) return { columns: [], tasks: [] };
+
+  const { data: tasks } = await supabase
+    .from('tasks')
+    .select('*')
+    .in('column_id', columns.map((column) => column.id))
+    .eq('is_archived', false);
+
+  return {
+    columns: columns || [],
+    tasks: tasks || [],
+  };
+};
+
+const fetchArchivedTasksForBoard = async (boardId) => {
+  if (!boardId) return [];
+
+  const { data, error } = await supabase
+    .from('archived_cards')
+    .select('*')
+    .eq('item_type', ARCHIVED_CARD_TYPE.TASK)
+    .eq('board_id', boardId)
+    .order('archived_at', { ascending: false });
+
+  if (error) return [];
+  return (data || []).map(toArchivedTaskRecord);
+};
+
+const getBoardAccess = (board, members, user) => {
+  const userEmail = normalizeEmail(user?.email);
+  const isOwner = Boolean(user?.id && board?.user_id && user.id === board.user_id);
+  const isMember = Boolean(userEmail && members.some((member) => normalizeEmail(member.email) === userEmail));
+  const canView = Boolean(board?.is_public || isOwner || isMember);
+  const canEdit = Boolean(isOwner || isMember);
+
+  return {
+    isOwner,
+    isMember,
+    canView,
+    canEdit,
+    isPublic: Boolean(board?.is_public),
+    shareId: board?.share_id || '',
+  };
+};
+
+const removeRealtimeChannel = () => {
+  if (!boardRealtimeChannel) return;
+  supabase.removeChannel(boardRealtimeChannel);
+  boardRealtimeChannel = null;
+  boardRealtimeBoardId = null;
+};
+
+const fetchBoardRecordById = async (boardId) => {
+  if (!boardId) return null;
+  const { data, error } = await supabase.from('boards').select('*').eq('id', boardId).maybeSingle();
+  if (error) return null;
+  return data || null;
+};
+
+const fetchBoardRecordByShareId = async (shareId) => {
+  if (!shareId) return null;
+  const { data, error } = await supabase.from('boards').select('*').eq('share_id', shareId).maybeSingle();
+  if (error) return null;
+  return data || null;
+};
+
+const syncBoardPresenceState = (channel, set) => {
+  const nextActiveCollaborators = Object.values(channel.presenceState() || {})
+    .flat()
+    .map((entry) => ({
+      key: entry.presence_ref || entry.user_id || entry.email || `${Date.now()}`,
+      email: normalizeEmail(entry.email),
+      name: entry.name || entry.email || 'Guest',
+      user_id: entry.user_id || null,
+      isGuest: Boolean(entry.isGuest),
+    }));
+
+  const dedupedActiveCollaborators = Array.from(
+    new Map(nextActiveCollaborators.map((entry) => [entry.email || entry.key, entry])).values()
+  );
+
+  set({ activeCollaborators: dedupedActiveCollaborators });
 };
 
 const maybeMigrateLegacyInbox = async (userId) => {
@@ -268,6 +388,11 @@ export const useBoardStore = create((set, get) => ({
   boards: [],
   publicBoards: [],
   currentBoardId: null,
+  currentBoardRecord: null,
+  boardMembers: [],
+  activeCollaborators: [],
+  currentBoardAccess: DEFAULT_BOARD_ACCESS,
+  boardViewError: '',
   columns: [],
   tasks: [],
   archivedTasks: [],
@@ -276,6 +401,152 @@ export const useBoardStore = create((set, get) => ({
   archivedInboxIdeas: [],
   inboxLabels: [],
   isLoading: false,
+
+  hydrateCurrentBoard: async (boardId, options = {}) => {
+    const { board: providedBoard = null, silent = false } = options;
+    const user = await getAuthenticatedUser();
+
+    if (!silent) set({ isLoading: true, boardViewError: '' });
+
+    try {
+      const board = providedBoard || (await fetchBoardRecordById(boardId));
+
+      if (!board) {
+        removeRealtimeChannel();
+        set({
+          currentBoardId: null,
+          currentBoardRecord: null,
+          boardMembers: [],
+          activeCollaborators: [],
+          currentBoardAccess: DEFAULT_BOARD_ACCESS,
+          columns: [],
+          tasks: [],
+          archivedTasks: [],
+          boardViewError: 'not_found',
+        });
+        return null;
+      }
+
+      const boardMembers = await fetchBoardMembersFromDb(board.id);
+      const currentBoardAccess = getBoardAccess(board, boardMembers, user);
+
+      if (!currentBoardAccess.canView) {
+        removeRealtimeChannel();
+        set({
+          currentBoardId: board.id,
+          currentBoardRecord: board,
+          boardMembers,
+          activeCollaborators: [],
+          currentBoardAccess,
+          columns: [],
+          tasks: [],
+          archivedTasks: [],
+          boardViewError: 'forbidden',
+        });
+        return { board, boardMembers, currentBoardAccess };
+      }
+
+      const [{ columns, tasks }, nextArchivedTasks] = await Promise.all([
+        fetchBoardGraph(board.id),
+        fetchArchivedTasksForBoard(board.id),
+      ]);
+
+      set((state) => ({
+        currentBoardId: board.id,
+        currentBoardRecord: board,
+        boardMembers,
+        currentBoardAccess,
+        columns,
+        tasks,
+        archivedTasks: nextArchivedTasks,
+        boardViewError: '',
+        boards: mergeBoardIntoCollection(state.boards, board, (item) =>
+          Boolean((user?.id && item.user_id === user.id) || currentBoardAccess.isMember)
+        ),
+        publicBoards: mergeBoardIntoCollection(state.publicBoards, board, (item) => Boolean(item.is_public)),
+      }));
+
+      if (boardRealtimeBoardId !== board.id) {
+        await get().subscribeToBoardRealtime(board.id);
+      }
+
+      return { board, boardMembers, currentBoardAccess };
+    } finally {
+      if (!silent) set({ isLoading: false });
+    }
+  },
+
+  refreshCurrentBoardFromRealtime: async () => {
+    const boardId = get().currentBoardId;
+    if (!boardId) return;
+    await get().hydrateCurrentBoard(boardId, { silent: true });
+  },
+
+  subscribeToBoardRealtime: async (boardId) => {
+    if (!boardId) return;
+    if (boardRealtimeChannel && boardRealtimeBoardId === boardId) return;
+
+    removeRealtimeChannel();
+
+    const user = await getAuthenticatedUser();
+    const currentPresenceKey =
+      user?.id || `guest-${typeof window !== 'undefined' ? window.crypto?.randomUUID?.() || Date.now() : Date.now()}`;
+
+    const handleTaskChange = async (payload) => {
+      const state = get();
+      if (state.currentBoardId !== boardId) return;
+
+      const currentColumnIds = new Set(state.columns.map((column) => column.id));
+      const nextColumnId = payload.new?.column_id || null;
+      const prevColumnId = payload.old?.column_id || null;
+
+      if (currentColumnIds.has(nextColumnId) || currentColumnIds.has(prevColumnId)) {
+        await state.refreshCurrentBoardFromRealtime();
+      }
+    };
+
+    const channel = supabase.channel(`board:${boardId}`, {
+      config: {
+        presence: {
+          key: currentPresenceKey,
+        },
+      },
+    });
+
+    channel
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'boards', filter: `id=eq.${boardId}` }, async () => {
+        await get().refreshCurrentBoardFromRealtime();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'columns', filter: `board_id=eq.${boardId}` }, async () => {
+        await get().refreshCurrentBoardFromRealtime();
+      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'board_members', filter: `board_id=eq.${boardId}` },
+        async () => {
+          await get().refreshCurrentBoardFromRealtime();
+          if (user?.id) {
+            await get().fetchBoards();
+          }
+        }
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, handleTaskChange)
+      .on('presence', { event: 'sync' }, () => syncBoardPresenceState(channel, set));
+
+    boardRealtimeChannel = channel;
+    boardRealtimeBoardId = boardId;
+
+    channel.subscribe(async (status) => {
+      if (status !== 'SUBSCRIBED') return;
+
+      await channel.track({
+        email: normalizeEmail(user?.email) || 'guest',
+        name: user?.email ? user.email.split('@')[0] : 'Guest',
+        user_id: user?.id || null,
+        isGuest: !user?.id,
+      });
+    });
+  },
 
   loadInboxIdeas: async () => {
     const user = await getAuthenticatedUser();
@@ -462,18 +733,23 @@ export const useBoardStore = create((set, get) => ({
     set({ isLoading: true });
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getAuthenticatedUser();
 
-      if (!user) {
+      if (!user?.id) {
+        removeRealtimeChannel();
         set({
           boards: [],
           publicBoards: [],
           currentBoardId: null,
+          currentBoardRecord: null,
+          boardMembers: [],
+          activeCollaborators: [],
+          currentBoardAccess: DEFAULT_BOARD_ACCESS,
+          boardViewError: '',
           columns: [],
           tasks: [],
           archivedTasks: [],
+          archivedCards: [],
           inboxIdeas: [],
           archivedInboxIdeas: [],
           inboxLabels: [],
@@ -482,13 +758,33 @@ export const useBoardStore = create((set, get) => ({
         return;
       }
 
-      const [{ data: myBoards }, { data: pubBoards }] = await Promise.all([
-        supabase.from('boards').select('*').eq('user_id', user.id),
-        supabase.from('boards').select('*').eq('is_public', true),
+      const userEmail = normalizeEmail(user.email);
+      const [{ data: ownBoards }, { data: publicBoards }, { data: memberLinks }] = await Promise.all([
+        supabase.from('boards').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
+        supabase.from('boards').select('*').eq('is_public', true).order('created_at', { ascending: true }),
+        userEmail
+          ? supabase.from('board_members').select('board_id').eq('email', userEmail)
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
-      const nextBoards = myBoards || [];
-      const nextPublicBoards = pubBoards || [];
+      let memberBoards = [];
+      if (memberLinks?.length) {
+        const { data } = await supabase
+          .from('boards')
+          .select('*')
+          .in(
+            'id',
+            memberLinks
+              .map((member) => member.board_id)
+              .filter(Boolean)
+          )
+          .order('created_at', { ascending: true });
+
+        memberBoards = data || [];
+      }
+
+      const nextBoards = dedupeBoards([...(ownBoards || []), ...memberBoards]);
+      const nextPublicBoards = dedupeBoards(publicBoards || []);
 
       const currentStillExists =
         (nextBoards.some((board) => board.id === get().currentBoardId) ||
@@ -508,8 +804,18 @@ export const useBoardStore = create((set, get) => ({
       if (nextCurrentBoardId) {
         await get().setCurrentBoard(nextCurrentBoardId);
       } else {
+        removeRealtimeChannel();
         await get().loadInboxIdeas();
-        set({ columns: [], tasks: [], archivedTasks: [] });
+        set({
+          currentBoardRecord: null,
+          boardMembers: [],
+          activeCollaborators: [],
+          currentBoardAccess: DEFAULT_BOARD_ACCESS,
+          boardViewError: '',
+          columns: [],
+          tasks: [],
+          archivedTasks: [],
+        });
       }
     } finally {
       set({ isLoading: false });
@@ -517,29 +823,97 @@ export const useBoardStore = create((set, get) => ({
   },
 
   setCurrentBoard: async (boardId) => {
-    set({ currentBoardId: boardId, isLoading: true, archivedTasks: [] });
+    const inboxPromise = get().loadInboxIdeas();
+    const result = await get().hydrateCurrentBoard(boardId);
+    await inboxPromise;
+    return result;
+  },
+
+  openBoardByShareId: async (shareId) => {
+    set({ isLoading: true, boardViewError: '' });
 
     try {
-      const inboxPromise = get().loadInboxIdeas();
-      const archivedPromise = get().fetchArchivedTasks(boardId);
-      const { data: cols } = await supabase.from('columns').select('*').eq('board_id', boardId).order('created_at');
+      const board = await fetchBoardRecordByShareId(shareId);
 
-      if (cols?.length > 0) {
-        const { data: tsks } = await supabase
-          .from('tasks')
-          .select('*')
-          .in('column_id', cols.map((column) => column.id))
-          .eq('is_archived', false);
-
-        set({ columns: cols, tasks: tsks || [] });
-      } else {
-        set({ columns: [], tasks: [] });
+      if (!board) {
+        removeRealtimeChannel();
+        set({
+          currentBoardId: null,
+          currentBoardRecord: null,
+          boardMembers: [],
+          activeCollaborators: [],
+          currentBoardAccess: DEFAULT_BOARD_ACCESS,
+          columns: [],
+          tasks: [],
+          archivedTasks: [],
+          boardViewError: 'not_found',
+        });
+        return null;
       }
 
-      await Promise.all([inboxPromise, archivedPromise]);
+      return await get().hydrateCurrentBoard(board.id, { board });
     } finally {
       set({ isLoading: false });
     }
+  },
+
+  inviteBoardMember: async (boardId, email) => {
+    if (!get().currentBoardAccess.isOwner) return { error: 'Недостаточно прав.' };
+    const inviter = await getAuthenticatedUser();
+    const normalizedEmail = normalizeEmail(email);
+    if (!inviter?.id || !boardId || !normalizedEmail) return { error: 'Введите email.' };
+
+    const { data, error } = await supabase
+      .from('board_members')
+      .upsert(
+        [
+          {
+            board_id: boardId,
+            email: normalizedEmail,
+            invited_by: inviter.id,
+          },
+        ],
+        { onConflict: 'board_id,email' }
+      )
+      .select()
+      .single();
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    const nextMembers = await fetchBoardMembersFromDb(boardId);
+    set({ boardMembers: nextMembers });
+    return { data, error: null };
+  },
+
+  shareCurrentBoard: async () => {
+    if (!get().currentBoardAccess.isOwner) return null;
+    const board = get().currentBoardRecord;
+    const user = await getAuthenticatedUser();
+    if (!board?.id || !user?.id) return null;
+
+    const shareId = board.share_id || globalThis.crypto?.randomUUID?.() || null;
+    const updates = {
+      is_public: true,
+      ...(shareId ? { share_id: shareId } : {}),
+    };
+
+    const { data, error } = await supabase.from('boards').update(updates).eq('id', board.id).select().single();
+    if (error || !data) return null;
+
+    set((state) => ({
+      currentBoardRecord: data,
+      currentBoardAccess: {
+        ...state.currentBoardAccess,
+        isPublic: true,
+        shareId: data.share_id || '',
+      },
+      boards: mergeBoardIntoCollection(state.boards, data, (item) => Boolean(user.id && item.user_id === user.id)),
+      publicBoards: mergeBoardIntoCollection(state.publicBoards, data, (item) => Boolean(item.is_public)),
+    }));
+
+    return data.share_id ? `${window.location.origin}/board/${data.share_id}` : null;
   },
 
   fetchArchivedTasks: async (boardId) => {
@@ -610,9 +984,10 @@ export const useBoardStore = create((set, get) => ({
       ]);
 
       set((state) => ({
-        boards: isPublic ? state.boards : [...state.boards, board],
-        publicBoards: isPublic ? [...state.publicBoards, board] : state.publicBoards,
+        boards: mergeBoardIntoCollection(state.boards, board, (item) => Boolean(item.user_id === user.id)),
+        publicBoards: mergeBoardIntoCollection(state.publicBoards, board, (item) => Boolean(item.is_public)),
         currentBoardId: board.id,
+        currentBoardRecord: board,
       }));
 
       await get().setCurrentBoard(board.id);
@@ -622,6 +997,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   addColumn: async (boardId, title) => {
+    if (!get().currentBoardAccess.canEdit) return null;
     const user = await getAuthenticatedUser();
     if (!user) return null;
 
@@ -638,6 +1014,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   updateColumnTitle: async (columnId, title) => {
+    if (!get().currentBoardAccess.canEdit) return null;
     const trimmedTitle = title.trim();
     if (!trimmedTitle) return null;
 
@@ -653,6 +1030,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   deleteColumn: async (columnId) => {
+    if (!get().currentBoardAccess.canEdit) return;
     const { error } = await supabase.from('columns').delete().eq('id', columnId);
 
     if (!error) {
@@ -665,6 +1043,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   addTask: async (columnId, title) => {
+    if (!get().currentBoardAccess.canEdit) return null;
     const user = await getAuthenticatedUser();
     if (!user) return null;
 
@@ -795,6 +1174,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   moveTaskToInbox: async (taskId) => {
+    if (!get().currentBoardAccess.canEdit) return null;
     const task = get().tasks.find((item) => item.id === taskId);
     const user = await getAuthenticatedUser();
 
@@ -836,6 +1216,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   moveInboxIdeaToColumn: async (ideaId, columnId) => {
+    if (!get().currentBoardAccess.canEdit) return null;
     const idea = get().inboxIdeas.find((item) => item.id === ideaId);
     const user = await getAuthenticatedUser();
 
@@ -868,6 +1249,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   updateTask: async (id, updates) => {
+    if (!get().currentBoardAccess.canEdit) return;
     const { data } = await updateTaskRecord(id, updates);
 
     if (data) {
@@ -879,6 +1261,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   moveTask: async (id, newColumnId) => {
+    if (!get().currentBoardAccess.canEdit) return;
     set((state) => ({
       tasks: state.tasks.map((task) => (task.id === id ? { ...task, column_id: newColumnId } : task)),
       archivedTasks: state.archivedTasks.map((task) => (task.id === id ? { ...task, column_id: newColumnId } : task)),
@@ -888,6 +1271,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   archiveTask: async (id) => {
+    if (!get().currentBoardAccess.canEdit) return null;
     const currentTask = get().tasks.find((task) => task.id === id);
     const user = await getAuthenticatedUser();
     const currentColumn = get().columns.find((column) => column.id === currentTask?.column_id);
@@ -935,6 +1319,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   unarchiveTask: async (id) => {
+    if (!get().currentBoardAccess.canEdit) return null;
     const archivedTask = get().archivedTasks.find((task) => task.id === id);
     if (!archivedTask) return null;
 
@@ -957,6 +1342,7 @@ export const useBoardStore = create((set, get) => ({
   },
 
   deleteTask: async (id) => {
+    if (!get().currentBoardAccess.canEdit) return;
     await supabase.from('tasks').delete().eq('id', id);
     await deleteArchivedCard(ARCHIVED_CARD_TYPE.TASK, id);
 
