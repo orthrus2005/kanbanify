@@ -65,20 +65,59 @@ const isMissingTasksColorError = (error) => {
   return errorText.includes('color') && errorText.includes('task');
 };
 
+const isMissingColumnFieldError = (error, fieldName) => {
+  if (!error || !fieldName) return false;
+
+  const errorText = `${error.code || ''} ${error.message || ''} ${error.details || ''} ${error.hint || ''}`.toLowerCase();
+  return errorText.includes(String(fieldName).toLowerCase());
+};
+
 const withoutColorField = (payload) => {
   if (!payload || !Object.prototype.hasOwnProperty.call(payload, 'color')) return payload;
   const { color, ...rest } = payload;
   return rest;
 };
 
-const insertTaskRecord = async (payload) => {
-  const result = await supabase.from('tasks').insert([payload]).select().single();
+const withoutField = (payload, fieldName) => {
+  if (!payload || !Object.prototype.hasOwnProperty.call(payload, fieldName)) return payload;
+  const { [fieldName]: _ignoredField, ...rest } = payload;
+  return rest;
+};
 
-  if (!result.error || !Object.prototype.hasOwnProperty.call(payload, 'color') || !isMissingTasksColorError(result.error)) {
+const withoutFieldInBatch = (payload, fieldName) => (Array.isArray(payload) ? payload.map((item) => withoutField(item, fieldName)) : payload);
+
+const insertColumnRecords = async (payload) => {
+  const result = await supabase.from('columns').insert(payload).select();
+
+  if (!result.error || !isMissingColumnFieldError(result.error, 'creator_email')) {
     return result;
   }
 
-  return supabase.from('tasks').insert([withoutColorField(payload)]).select().single();
+  return supabase.from('columns').insert(withoutFieldInBatch(payload, 'creator_email')).select();
+};
+
+const insertTaskRecord = async (payload) => {
+  const result = await supabase.from('tasks').insert([payload]).select().single();
+
+  if (!result.error) {
+    return result;
+  }
+
+  let fallbackPayload = payload;
+
+  if (Object.prototype.hasOwnProperty.call(fallbackPayload, 'color') && isMissingTasksColorError(result.error)) {
+    fallbackPayload = withoutColorField(fallbackPayload);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(fallbackPayload, 'creator_email') && isMissingColumnFieldError(result.error, 'creator_email')) {
+    fallbackPayload = withoutField(fallbackPayload, 'creator_email');
+  }
+
+  if (fallbackPayload === payload) {
+    return result;
+  }
+
+  return supabase.from('tasks').insert([fallbackPayload]).select().single();
 };
 
 const updateTaskRecord = async (id, updates) => {
@@ -450,6 +489,15 @@ export const useBoardStore = create((set, get) => ({
         fetchBoardGraph(board.id),
         fetchArchivedTasksForBoard(board.id),
       ]);
+
+      if (user.email) {
+        await supabase
+          .from('columns')
+          .update({ creator_email: user.email })
+          .eq('board_id', board.id)
+          .eq('user_id', user.id)
+          .is('creator_email', null);
+      }
 
       set((state) => ({
         currentBoardId: board.id,
@@ -978,7 +1026,7 @@ export const useBoardStore = create((set, get) => ({
       if (error) throw error;
       if (!board) return;
 
-      await supabase.from('columns').insert([
+      await insertColumnRecords([
         { board_id: board.id, title: 'Нужно сделать', user_id: user.id },
         { board_id: board.id, title: 'В работе', user_id: user.id },
       ]);
@@ -1001,11 +1049,8 @@ export const useBoardStore = create((set, get) => ({
     const user = await getAuthenticatedUser();
     if (!user) return null;
 
-    const { data: newColumn, error } = await supabase
-      .from('columns')
-      .insert([{ board_id: boardId, title, user_id: user.id }])
-      .select()
-      .single();
+    const { data: insertedColumns, error } = await insertColumnRecords([{ board_id: boardId, title, user_id: user.id, creator_email: user.email || null }]);
+    const newColumn = insertedColumns?.[0] || null;
 
     if (error || !newColumn) return null;
 
@@ -1047,7 +1092,13 @@ export const useBoardStore = create((set, get) => ({
     const user = await getAuthenticatedUser();
     if (!user) return null;
 
-    const { data: newTask } = await insertTaskRecord({ column_id: columnId, title, user_id: user.id, color: null });
+    const { data: newTask } = await insertTaskRecord({
+      column_id: columnId,
+      title,
+      user_id: user.id,
+      color: null,
+      creator_email: user.email || null,
+    });
 
     if (newTask) {
       set((state) => ({ tasks: [...state.tasks, newTask] }));

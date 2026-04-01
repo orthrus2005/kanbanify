@@ -4,6 +4,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { AlignLeft, Archive, ArchiveRestore, CalendarDays, MoreHorizontal, PaintBucket, Tag, Trash2, X } from 'lucide-react';
 import { useBoardStore } from '../../board/model/store';
+import { useAuthStore } from '../../session/model/authStore';
 import { useConfirmStore } from '../../../shared/model/confirmStore';
 
 const CARD_COLORS = ['#334155', '#2563eb', '#059669', '#d97706', '#e11d48', '#7c3aed'];
@@ -27,6 +28,18 @@ const getCardStyle = (color, transform, isDragging, isOverlay) => ({
   boxShadow: color ? `0 14px 30px rgba(15, 23, 42, 0.1), inset 0 0 0 1px ${hexToRgba(color, 0.2)}` : undefined,
 });
 
+const getCreatorLabel = (creatorEmail, creatorUserId, currentUser) => {
+  if (creatorEmail) {
+    return creatorEmail.split('@')[0] || creatorEmail;
+  }
+
+  if (currentUser?.id && creatorUserId === currentUser.id) {
+    return 'Вы';
+  }
+
+  return 'Участник';
+};
+
 export const TaskCard = ({ task, isOverlay = false, dndId }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -39,6 +52,7 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
 
   const { columns, currentBoardAccess, updateTask, deleteTask, archiveTask, unarchiveTask } = useBoardStore();
   const requestConfirm = useConfirmStore((state) => state.requestConfirm);
+  const currentUser = useAuthStore((state) => state.user);
   const dragFlagRef = useRef(false);
   const menuRef = useRef(null);
   const modalRef = useRef(null);
@@ -116,6 +130,7 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
   );
 
   const dueLabel = task.due_date ? new Date(task.due_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : null;
+  const creatorLabel = getCreatorLabel(task.creator_email, task.user_id, currentUser);
 
   const baseChipStyle = task.color
     ? {
@@ -414,7 +429,9 @@ export const TaskCard = ({ task, isOverlay = false, dndId }) => {
           </div>
 
           <div className="flex items-center justify-between gap-3 text-xs text-slate-400">
-            <span>{task.created_at ? new Date(task.created_at).toLocaleDateString('ru-RU') : 'Без даты'}</span>
+            <span className="truncate" title={task.creator_email || creatorLabel}>
+              Создал: {creatorLabel}
+            </span>
             {task.due_date ? <span>{new Date(task.due_date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span> : null}
           </div>
         </div>

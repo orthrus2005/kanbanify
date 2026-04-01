@@ -106,8 +106,9 @@ function App() {
   const allBoards = useMemo(() => dedupeBoards([...(boards || []), ...(publicBoards || [])]), [boards, publicBoards]);
   const currentBoard = useMemo(() => currentBoardRecord || allBoards.find((board) => board.id === currentBoardId) || null, [allBoards, currentBoardId, currentBoardRecord]);
   const activeWorkspaceLabel = useMemo(() => getActiveWorkspaceLabel(workspacePanels), [workspacePanels]);
+  const privateBoards = useMemo(() => dedupeBoards(boards.filter((board) => !board.is_public)), [boards]);
   const visiblePublicBoards = useMemo(
-    () => publicBoards.filter((board) => !boards.some((ownedBoard) => ownedBoard.id === board.id)),
+    () => dedupeBoards([...publicBoards, ...boards.filter((board) => board.is_public)]),
     [boards, publicBoards]
   );
 
@@ -364,14 +365,14 @@ function App() {
             <div className="mb-6">
               <div className="mb-3 flex items-center justify-between">
                 <div className="text-xs font-black uppercase tracking-[0.2em] text-white/38">Мои доски</div>
-                <div className="rounded-full bg-white/8 px-2.5 py-1 text-[11px] font-bold text-white/65">{boards.length}</div>
+                <div className="rounded-full bg-white/8 px-2.5 py-1 text-[11px] font-bold text-white/65">{privateBoards.length}</div>
               </div>
 
               <div className="space-y-2">
-                {isLoading && boards.length === 0 ? (
+                {isLoading && privateBoards.length === 0 ? (
                   <div className="rounded-2xl border border-white/10 bg-white/7 px-4 py-4 text-sm text-white/78">Загрузка...</div>
-                ) : boards.length ? (
-                  boards.map((board) => (
+                ) : privateBoards.length ? (
+                  privateBoards.map((board) => (
                     <button
                       key={board.id}
                       onClick={() => handleSelectBoard(board.id)}

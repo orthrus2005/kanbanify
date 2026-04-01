@@ -55,6 +55,18 @@ const COLUMN_COLOR_PRESETS = [
 const getColumnUiKey = (userId, boardId, columnId) =>
   `kanbanify-column-ui-${userId || 'guest'}-${boardId || 'board'}-${columnId}`;
 
+const getCreatorLabel = (creatorEmail, creatorUserId, currentUser) => {
+  if (creatorEmail) {
+    return creatorEmail.split('@')[0] || creatorEmail;
+  }
+
+  if (currentUser?.id && creatorUserId === currentUser.id) {
+    return 'Вы';
+  }
+
+  return 'Участник';
+};
+
 export const Column = ({ column, tasks }) => {
   const { setNodeRef, isOver } = useDroppable({ id: `column:${column.id}` });
   const { addTask, deleteColumn, updateColumnTitle, currentBoardId, currentBoardAccess } = useBoardStore();
@@ -70,6 +82,7 @@ export const Column = ({ column, tasks }) => {
   const titleInputRef = useRef(null);
   const colorMenuRef = useRef(null);
   const canEditCurrentBoard = Boolean(currentBoardAccess?.canEdit);
+  const creatorLabel = getCreatorLabel(column.creator_email, column.user_id, user);
 
   useEffect(() => {
     setTitleDraft(column.title);
@@ -212,6 +225,11 @@ export const Column = ({ column, tasks }) => {
           )}
 
           <p className={`mt-1 text-xs font-medium text-slate-500 ${isCollapsed ? 'text-center' : ''}`}>{tasks.length}</p>
+          {!isCollapsed ? (
+            <p className="mt-1 truncate text-[11px] font-medium text-slate-400" title={column.creator_email || creatorLabel}>
+              Создал: {creatorLabel}
+            </p>
+          ) : null}
         </div>
 
         <div className={`relative flex gap-1 ${isCollapsed ? 'mt-1 flex-col' : ''}`} ref={colorMenuRef}>
