@@ -36,7 +36,7 @@ export const BoardCollaborationHeader = ({
   );
 
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex flex-col gap-4">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="truncate text-lg font-black tracking-tight text-slate-900">{board?.title || 'Доска'}</h3>
@@ -48,15 +48,17 @@ export const BoardCollaborationHeader = ({
             {access?.isPublic ? <Globe2 size={12} /> : <Lock size={12} />}
             {access?.isPublic ? 'Публичная' : 'Приватная'}
           </span>
-          {!access?.canEdit ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">Только просмотр</span> : null}
+          {!access?.canEdit ? (
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">Только просмотр</span>
+          ) : null}
         </div>
         <p className="mt-1 text-sm text-slate-500">
           {collaboratorEmails.length ? `Участники: ${collaboratorEmails.length}` : 'Пока без приглашённых участников'}
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center">
+      <div className="flex flex-col items-start gap-3">
+        <div className="flex flex-wrap items-center">
           {collaboratorEmails.slice(0, 6).map((email) => {
             const isActive = activeEmailSet.has(email);
 
@@ -74,7 +76,7 @@ export const BoardCollaborationHeader = ({
           })}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {access?.isOwner ? (
             <button
               type="button"
@@ -97,7 +99,7 @@ export const BoardCollaborationHeader = ({
         </div>
       </div>
 
-      {shareFeedback ? <div className="w-full text-right text-xs font-semibold text-emerald-600">{shareFeedback}</div> : null}
+      {shareFeedback ? <div className="text-xs font-semibold text-emerald-600">{shareFeedback}</div> : null}
     </div>
   );
 };
