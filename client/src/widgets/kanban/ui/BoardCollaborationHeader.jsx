@@ -144,43 +144,43 @@ export const BoardCollaborationHeader = ({
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="truncate text-lg font-black tracking-tight text-slate-900">{board?.title || 'Доска'}</h3>
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-              access?.isPublic ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
-            }`}
-          >
-            {access?.isPublic ? <Globe2 size={12} /> : <Lock size={12} />}
-            {access?.isPublic ? 'Публичная' : 'Приватная'}
-          </span>
-          {!access?.canEdit ? (
-            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">Только просмотр</span>
-          ) : null}
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-lg font-black tracking-tight text-slate-900">{board?.title || 'Доска'}</h3>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                access?.isPublic ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+              }`}
+            >
+              {access?.isPublic ? <Globe2 size={12} /> : <Lock size={12} />}
+              {access?.isPublic ? 'Публичная' : 'Приватная'}
+            </span>
+            {!access?.canEdit ? (
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">Только просмотр</span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-sm text-slate-500">
+            {collaboratorEntries.length ? `Участники: ${collaboratorEntries.length}` : 'Пока без приглашенных участников'}
+          </p>
         </div>
-        <p className="mt-1 text-sm text-slate-500">
-          {collaboratorEntries.length ? `Участники: ${collaboratorEntries.length}` : 'Пока без приглашенных участников'}
-        </p>
-      </div>
 
-      <div className="flex flex-col items-start gap-3">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex w-full min-w-0 flex-col gap-2 xl:max-w-[540px] xl:items-end">
           <button
             type="button"
             onClick={() => setIsMembersOpen((value) => !value)}
-            className="flex items-center rounded-2xl border border-slate-200 bg-white/92 px-2 py-2 transition hover:border-slate-300 hover:bg-white"
+            className="flex w-full max-w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/92 px-3 py-2.5 text-left transition hover:border-slate-300 hover:bg-white xl:max-w-[320px]"
           >
-            <div className="flex items-center">
-              {collaboratorEntries.slice(0, 6).map((entry) => {
+            <div className="flex min-w-0 items-center">
+              {collaboratorEntries.slice(0, 4).map((entry) => {
                 const isActive = activeEmailSet.has(entry.email);
 
                 return (
                   <div
                     key={entry.email}
                     title={entry.email}
-                    className={`-ml-2 flex h-10 w-10 items-center justify-center rounded-full border-2 border-white text-xs font-black shadow-sm first:ml-0 ${
+                    className={`-ml-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white text-[11px] font-black shadow-sm first:ml-0 ${
                       isActive ? 'bg-emerald-500 text-white ring-2 ring-emerald-200' : 'bg-slate-100 text-slate-700'
                     }`}
                   >
@@ -189,62 +189,57 @@ export const BoardCollaborationHeader = ({
                 );
               })}
             </div>
+            <span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">
+              <Users size={15} />
+              Участники
+            </span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setIsMembersOpen((value) => !value)}
-            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/92 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white"
-          >
-            <Users size={15} />
-            Участники
-          </button>
-        </div>
+          <div className="flex w-full flex-wrap items-center gap-2 xl:justify-end">
+            {access?.isOwner ? (
+              <button
+                type="button"
+                onClick={onInvite}
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/92 px-3.5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white"
+              >
+                <UserPlus size={15} />
+                Пригласить
+              </button>
+            ) : null}
 
-        <div className="flex flex-wrap items-center gap-2">
-          {access?.isOwner ? (
+            {access?.isOwner && !access?.isPublic ? (
+              <button
+                type="button"
+                onClick={onPublish}
+                disabled={isPublishing}
+                className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Globe2 size={15} />
+                {isPublishing ? 'Публикую...' : 'Опубликовать'}
+              </button>
+            ) : null}
+
             <button
               type="button"
-              onClick={onInvite}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/92 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white"
+              onClick={onShare}
+              disabled={isSharing || !access?.isPublic}
+              className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,99,235,0.25)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
             >
-              <UserPlus size={15} />
-              Пригласить
+              <Share2 size={15} />
+              {isSharing ? 'Копирую...' : 'Поделиться'}
             </button>
-          ) : null}
 
-          {access?.isOwner ? (
-            <button
-              type="button"
-              onClick={handleDeleteBoard}
-              className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-100"
-            >
-              <Trash2 size={15} />
-              Удалить доску
-            </button>
-          ) : null}
-
-          {access?.isOwner && !access?.isPublic ? (
-            <button
-              type="button"
-              onClick={onPublish}
-              disabled={isPublishing}
-              className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Globe2 size={15} />
-              {isPublishing ? 'Публикую...' : 'Сделать публичной'}
-            </button>
-          ) : null}
-
-          <button
-            type="button"
-            onClick={onShare}
-            disabled={isSharing || !access?.isPublic}
-            className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,99,235,0.25)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-          >
-            <Share2 size={15} />
-            {isSharing ? 'Подготавливаю...' : 'Поделиться'}
-          </button>
+            {access?.isOwner ? (
+              <button
+                type="button"
+                onClick={handleDeleteBoard}
+                className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-100"
+              >
+                <Trash2 size={15} />
+                Удалить
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 
