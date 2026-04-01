@@ -36,6 +36,8 @@ export const KanbanBoard = ({ showInbox = true, inboxOnly = false, showHeader = 
     addColumn,
     shareCurrentBoard,
     inviteBoardMember,
+    removeBoardMember,
+    leaveBoard,
   } = useBoardStore();
 
   const [activeItem, setActiveItem] = useState(null);
@@ -159,6 +161,8 @@ export const KanbanBoard = ({ showInbox = true, inboxOnly = false, showHeader = 
       isSharing={isSharingBoard}
       onShare={handleShareBoard}
       onInvite={() => setIsInviteModalOpen(true)}
+      onRemoveMember={(email) => removeBoardMember(currentBoardId, email)}
+      onLeaveBoard={() => leaveBoard(currentBoardId)}
       shareFeedback={shareFeedback}
     />
   ) : null;

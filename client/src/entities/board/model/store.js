@@ -628,6 +628,27 @@ export const useBoardStore = create((set, get) => ({
 
     if (!user?.id || !trimmedName) return null;
 
+    if (normalizeEmail(inviter.email) === normalizedEmail) {
+      return { error: 'Нельзя пригласить самого себя.' };
+    }
+
+    const existingMembers = get().boardMembers || [];
+    if (existingMembers.some((member) => normalizeEmail(member.email) === normalizedEmail)) {
+      return { error: 'Этот участник уже добавлен в доску.' };
+    }
+
+    const { data: userExists, error: userExistsError } = await supabase.rpc('user_exists_by_email', {
+      p_email: normalizedEmail,
+    });
+
+    if (userExistsError) {
+      return { error: userExistsError.message || 'Не удалось проверить email пользователя.' };
+    }
+
+    if (!userExists) {
+      return { error: 'Пользователь с таким email не найден.' };
+    }
+
     const { data, error } = await supabase
       .from('inbox_labels')
       .insert([{ user_id: user.id, name: trimmedName, color: color || null }])
@@ -911,6 +932,27 @@ export const useBoardStore = create((set, get) => ({
     const normalizedEmail = normalizeEmail(email);
     if (!inviter?.id || !boardId || !normalizedEmail) return { error: 'Введите email.' };
 
+    if (normalizeEmail(inviter.email) === normalizedEmail) {
+      return { error: 'Нельзя пригласить самого себя.' };
+    }
+
+    const existingMembers = get().boardMembers || [];
+    if (existingMembers.some((member) => normalizeEmail(member.email) === normalizedEmail)) {
+      return { error: 'Этот участник уже добавлен в доску.' };
+    }
+
+    const { data: userExists, error: userExistsError } = await supabase.rpc('user_exists_by_email', {
+      p_email: normalizedEmail,
+    });
+
+    if (userExistsError) {
+      return { error: userExistsError.message || 'Не удалось проверить email пользователя.' };
+    }
+
+    if (!userExists) {
+      return { error: 'Пользователь с таким email не найден.' };
+    }
+
     const { data, error } = await supabase
       .from('board_members')
       .upsert(
@@ -933,6 +975,59 @@ export const useBoardStore = create((set, get) => ({
     const nextMembers = await fetchBoardMembersFromDb(boardId);
     set({ boardMembers: nextMembers });
     return { data, error: null };
+  },
+
+  removeBoardMember: async (boardId, email) => {
+    if (!get().currentBoardAccess.isOwner) return { error: 'Недостаточно прав.' };
+
+    const normalizedEmail = normalizeEmail(email);
+    if (!boardId || !normalizedEmail) return { error: 'Не указан участник.' };
+
+    const { error } = await supabase.from('board_members').delete().eq('board_id', boardId).eq('email', normalizedEmail);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    if (get().currentBoardId === boardId) {
+      await get().hydrateCurrentBoard(boardId, {
+        board: get().currentBoardRecord,
+        silent: true,
+      });
+    } else {
+      const nextMembers = await fetchBoardMembersFromDb(boardId);
+      set({ boardMembers: nextMembers });
+    }
+
+    return { error: null };
+  },
+
+  leaveBoard: async (boardId) => {
+    const user = await getAuthenticatedUser();
+    const normalizedEmail = normalizeEmail(user?.email);
+
+    if (!boardId || !normalizedEmail) return { error: 'Не удалось определить участника.' };
+    if (get().currentBoardAccess.isOwner) return { error: 'Создатель доски не может покинуть её через эту кнопку.' };
+    if (!get().currentBoardAccess.isMember) return { error: 'Вы не являетесь участником этой доски.' };
+
+    const { error } = await supabase.from('board_members').delete().eq('board_id', boardId).eq('email', normalizedEmail);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    const isSharedBoardPath = typeof window !== 'undefined' && /^\/board\/[^/]+\/?$/.test(window.location.pathname);
+
+    if (isSharedBoardPath) {
+      await get().hydrateCurrentBoard(boardId, {
+        board: get().currentBoardRecord,
+        silent: true,
+      });
+    } else {
+      await get().fetchBoards();
+    }
+
+    return { error: null };
   },
 
   shareCurrentBoard: async () => {

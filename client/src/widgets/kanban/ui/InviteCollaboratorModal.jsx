@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Mail, X } from 'lucide-react';
+import { AlertCircle, Mail, X } from 'lucide-react';
 
 export const InviteCollaboratorModal = ({ isOpen, boardTitle, onClose, onInvite }) => {
   const [email, setEmail] = useState('');
@@ -96,7 +96,12 @@ export const InviteCollaboratorModal = ({ isOpen, boardTitle, onClose, onInvite 
           />
         </label>
 
-        {error ? <p className="mt-3 text-sm font-medium text-rose-500">{error}</p> : null}
+        {error ? (
+          <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+            <AlertCircle size={17} className="mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        ) : null}
 
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
@@ -111,7 +116,7 @@ export const InviteCollaboratorModal = ({ isOpen, boardTitle, onClose, onInvite 
             disabled={isSubmitting}
             className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
           >
-            {isSubmitting ? 'Приглашаю...' : 'Добавить участника'}
+            {isSubmitting ? 'Проверяю...' : 'Добавить участника'}
           </button>
         </div>
       </form>
