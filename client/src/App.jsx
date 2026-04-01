@@ -425,7 +425,7 @@ function App() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 border-t border-white/8 bg-white/[0.03] px-4 py-4 sm:flex-row sm:justify-between sm:px-6">
+          <div className="flex border-t border-white/8 bg-white/[0.03] px-4 py-4 sm:px-6">
             <button
               type="button"
               onClick={handleCreateBoard}
@@ -437,7 +437,7 @@ function App() {
             <button
               type="button"
               onClick={signOut}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-sm font-semibold text-white/90 transition hover:bg-white/12 hover:text-white"
+              className="hidden"
             >
               <LogOut size={16} />
               Выйти

@@ -1067,7 +1067,7 @@ export const useBoardStore = create((set, get) => ({
     return { error: null };
   },
 
-  shareCurrentBoard: async () => {
+  publishCurrentBoard: async () => {
     if (!get().currentBoardAccess.isOwner) return null;
     const board = get().currentBoardRecord;
     const user = await getAuthenticatedUser();
@@ -1094,6 +1094,15 @@ export const useBoardStore = create((set, get) => ({
     }));
 
     return data.share_id ? `${window.location.origin}/board/${data.share_id}` : null;
+  },
+
+  shareCurrentBoard: async () => {
+    const board = get().currentBoardRecord;
+    const shareId = board?.share_id || get().currentBoardAccess.shareId;
+
+    if (!board?.is_public || !shareId) return null;
+
+    return `${window.location.origin}/board/${shareId}`;
   },
 
   fetchArchivedTasks: async (boardId) => {

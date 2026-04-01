@@ -34,6 +34,7 @@ export const KanbanBoard = ({ showInbox = true, inboxOnly = false, showHeader = 
     moveTaskToInbox,
     moveInboxIdeaToColumn,
     addColumn,
+    publishCurrentBoard,
     shareCurrentBoard,
     inviteBoardMember,
     removeBoardMember,
@@ -44,6 +45,7 @@ export const KanbanBoard = ({ showInbox = true, inboxOnly = false, showHeader = 
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [columnTitle, setColumnTitle] = useState('');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isPublishingBoard, setIsPublishingBoard] = useState(false);
   const [isSharingBoard, setIsSharingBoard] = useState(false);
   const [shareFeedback, setShareFeedback] = useState('');
 
@@ -127,15 +129,33 @@ export const KanbanBoard = ({ showInbox = true, inboxOnly = false, showHeader = 
     setIsAddingColumn(false);
   };
 
+  const handlePublishBoard = async () => {
+    setIsPublishingBoard(true);
+    setShareFeedback('');
+
+    try {
+      const shareUrl = await publishCurrentBoard();
+
+      if (!shareUrl) {
+        setShareFeedback('Не удалось сделать доску публичной.');
+        return;
+      }
+
+      setShareFeedback('Доска стала публичной. Теперь ссылку можно копировать через кнопку "Поделиться".');
+      window.setTimeout(() => setShareFeedback(''), 3000);
+    } catch {
+      setShareFeedback('Не удалось сделать доску публичной.');
+    } finally {
+      setIsPublishingBoard(false);
+    }
+  };
+
   const handleShareBoard = async () => {
     setIsSharingBoard(true);
     setShareFeedback('');
 
     try {
-      const shareUrl =
-        currentBoardAccess?.isPublic && currentBoardAccess?.shareId
-          ? `${window.location.origin}/board/${currentBoardAccess.shareId}`
-          : await shareCurrentBoard();
+      const shareUrl = await shareCurrentBoard();
 
       if (!shareUrl) {
         setShareFeedback('Не удалось подготовить ссылку.');
@@ -158,7 +178,9 @@ export const KanbanBoard = ({ showInbox = true, inboxOnly = false, showHeader = 
       members={boardMembers}
       access={currentBoardAccess}
       activeCollaborators={activeCollaborators}
+      isPublishing={isPublishingBoard}
       isSharing={isSharingBoard}
+      onPublish={handlePublishBoard}
       onShare={handleShareBoard}
       onInvite={() => setIsInviteModalOpen(true)}
       onRemoveMember={(email) => removeBoardMember(currentBoardId, email)}

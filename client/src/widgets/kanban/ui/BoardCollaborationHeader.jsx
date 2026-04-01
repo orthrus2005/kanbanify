@@ -20,7 +20,9 @@ export const BoardCollaborationHeader = ({
   members = [],
   access,
   activeCollaborators = [],
+  isPublishing = false,
   isSharing = false,
+  onPublish,
   onShare,
   onInvite,
   onRemoveMember,
@@ -94,7 +96,7 @@ export const BoardCollaborationHeader = ({
       return;
     }
 
-    setMemberFeedback('Участник удалён.');
+    setMemberFeedback('Участник удален.');
   };
 
   const handleLeaveBoard = async () => {
@@ -138,7 +140,7 @@ export const BoardCollaborationHeader = ({
           ) : null}
         </div>
         <p className="mt-1 text-sm text-slate-500">
-          {collaboratorEntries.length ? `Участники: ${collaboratorEntries.length}` : 'Пока без приглашённых участников'}
+          {collaboratorEntries.length ? `Участники: ${collaboratorEntries.length}` : 'Пока без приглашенных участников'}
         </p>
       </div>
 
@@ -189,10 +191,23 @@ export const BoardCollaborationHeader = ({
               Пригласить
             </button>
           ) : null}
+
+          {access?.isOwner && !access?.isPublic ? (
+            <button
+              type="button"
+              onClick={onPublish}
+              disabled={isPublishing}
+              className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Globe2 size={15} />
+              {isPublishing ? 'Публикую...' : 'Сделать публичной'}
+            </button>
+          ) : null}
+
           <button
             type="button"
             onClick={onShare}
-            disabled={isSharing || (!access?.isPublic && !access?.isOwner)}
+            disabled={isSharing || !access?.isPublic}
             className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,99,235,0.25)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
           >
             <Share2 size={15} />
@@ -255,7 +270,7 @@ export const BoardCollaborationHeader = ({
               })
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                Пока нет приглашённых участников.
+                Пока нет приглашенных участников.
               </div>
             )}
           </div>
