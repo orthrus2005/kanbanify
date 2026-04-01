@@ -1005,6 +1005,13 @@ export const useBoardStore = create((set, get) => ({
   leaveBoard: async (boardId) => {
     const user = await getAuthenticatedUser();
     const normalizedEmail = normalizeEmail(user?.email);
+    const state = get();
+    const boardRecord =
+      state.currentBoardRecord?.id === boardId ? state.currentBoardRecord : await fetchBoardRecordById(boardId);
+
+    if (!boardId || !normalizedEmail) return { error: 'Не удалось определить участника.' };
+    if (state.currentBoardAccess.isOwner) return { error: 'Создатель доски не может покинуть её через эту кнопку.' };
+    if (!state.currentBoardAccess.isMember) return { error: 'Вы не являетесь участником этой доски.' };
 
     if (!boardId || !normalizedEmail) return { error: 'Не удалось определить участника.' };
     if (get().currentBoardAccess.isOwner) return { error: 'Создатель доски не может покинуть её через эту кнопку.' };
@@ -1016,14 +1023,44 @@ export const useBoardStore = create((set, get) => ({
       return { error: error.message };
     }
 
+    set((currentState) => ({
+      boardMembers:
+        currentState.currentBoardId === boardId
+          ? currentState.boardMembers.filter((member) => normalizeEmail(member.email) !== normalizedEmail)
+          : currentState.boardMembers,
+      currentBoardAccess:
+        currentState.currentBoardId === boardId
+          ? {
+              ...currentState.currentBoardAccess,
+              isMember: false,
+              canEdit: false,
+            }
+          : currentState.currentBoardAccess,
+    }));
+
     const isSharedBoardPath = typeof window !== 'undefined' && /^\/board\/[^/]+\/?$/.test(window.location.pathname);
 
-    if (isSharedBoardPath) {
+    if (boardRecord?.is_public || isSharedBoardPath) {
       await get().hydrateCurrentBoard(boardId, {
-        board: get().currentBoardRecord,
+        board: boardRecord || get().currentBoardRecord,
         silent: true,
       });
+
+      if (!isSharedBoardPath) {
+        await get().fetchBoards();
+      }
     } else {
+      set((currentState) => ({
+        boards: currentState.boards.filter((board) => board.id !== boardId),
+        currentBoardId: currentState.currentBoardId === boardId ? null : currentState.currentBoardId,
+        currentBoardRecord: currentState.currentBoardId === boardId ? null : currentState.currentBoardRecord,
+        boardMembers: currentState.currentBoardId === boardId ? [] : currentState.boardMembers,
+        activeCollaborators: currentState.currentBoardId === boardId ? [] : currentState.activeCollaborators,
+        currentBoardAccess: currentState.currentBoardId === boardId ? DEFAULT_BOARD_ACCESS : currentState.currentBoardAccess,
+        columns: currentState.currentBoardId === boardId ? [] : currentState.columns,
+        tasks: currentState.currentBoardId === boardId ? [] : currentState.tasks,
+        archivedTasks: currentState.currentBoardId === boardId ? [] : currentState.archivedTasks,
+      }));
       await get().fetchBoards();
     }
 
