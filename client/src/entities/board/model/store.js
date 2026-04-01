@@ -1185,6 +1185,44 @@ export const useBoardStore = create((set, get) => ({
     }
   },
 
+  deleteBoard: async (boardId) => {
+    const user = await getAuthenticatedUser();
+    if (!user?.id || !boardId) return { error: 'Не удалось определить доску.' };
+
+    const board =
+      get().currentBoardRecord?.id === boardId
+        ? get().currentBoardRecord
+        : [...get().boards, ...get().publicBoards].find((item) => item.id === boardId) || null;
+
+    if (board?.user_id && board.user_id !== user.id) {
+      return { error: 'Удалять можно только свои доски.' };
+    }
+
+    const { error } = await supabase.from('boards').delete().eq('id', boardId).eq('user_id', user.id);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    if (get().currentBoardId === boardId) {
+      removeRealtimeChannel();
+      set({
+        currentBoardId: null,
+        currentBoardRecord: null,
+        boardMembers: [],
+        activeCollaborators: [],
+        currentBoardAccess: DEFAULT_BOARD_ACCESS,
+        boardViewError: '',
+        columns: [],
+        tasks: [],
+        archivedTasks: [],
+      });
+    }
+
+    await get().fetchBoards();
+    return { error: null };
+  },
+
   addColumn: async (boardId, title) => {
     if (!get().currentBoardAccess.canEdit) return null;
     const user = await getAuthenticatedUser();

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Globe2, Lock, LogOut, Share2, UserMinus, UserPlus, Users } from 'lucide-react';
+import { Globe2, Lock, LogOut, Share2, Trash2, UserMinus, UserPlus, Users } from 'lucide-react';
 import { useAuthStore } from '../../../entities/session/model/authStore';
 import { useConfirmStore } from '../../../shared/model/confirmStore';
 
@@ -25,6 +25,7 @@ export const BoardCollaborationHeader = ({
   onPublish,
   onShare,
   onInvite,
+  onDeleteBoard,
   onRemoveMember,
   onLeaveBoard,
   shareFeedback = '',
@@ -122,6 +123,26 @@ export const BoardCollaborationHeader = ({
     setMemberFeedback('');
   };
 
+  const handleDeleteBoard = async () => {
+    if (!onDeleteBoard || !board?.title) return;
+
+    const confirmed = await requestConfirm({
+      title: 'Удалить доску',
+      message: `Доска "${board.title}" будет удалена без возможности восстановления.`,
+    });
+
+    if (!confirmed) return;
+
+    const result = await onDeleteBoard();
+    if (result?.error) {
+      setMemberFeedback(result.error);
+      return;
+    }
+
+    setIsMembersOpen(false);
+    setMemberFeedback('');
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="min-w-0">
@@ -189,6 +210,17 @@ export const BoardCollaborationHeader = ({
             >
               <UserPlus size={15} />
               Пригласить
+            </button>
+          ) : null}
+
+          {access?.isOwner ? (
+            <button
+              type="button"
+              onClick={handleDeleteBoard}
+              className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition hover:bg-rose-100"
+            >
+              <Trash2 size={15} />
+              Удалить доску
             </button>
           ) : null}
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Archive, ArrowRightLeft, CalendarDays, Inbox, LayoutGrid, LogOut, Plus, User2, X } from 'lucide-react';
+import { Archive, ArrowRightLeft, CalendarDays, Inbox, LayoutGrid, LogOut, Plus, Trash2, User2, X } from 'lucide-react';
 import { useAuthStore } from './entities/session/model/authStore';
 import { useBoardStore } from './entities/board/model/store';
 import { KanbanBoard } from './widgets/kanban/ui/KanbanBoard';
@@ -10,6 +10,7 @@ import { PlannerWorkspace } from './widgets/planner/ui/PlannerWorkspace';
 import { ArchiveDrawer } from './widgets/archive/ui/ArchiveDrawer';
 import { AuthForm } from './features/auth/ui/AuthForm';
 import { ConfirmDialog } from './shared/ui/ConfirmDialog';
+import { useConfirmStore } from './shared/model/confirmStore';
 
 const WORKSPACE_PANELS_KEY = 'kanbanify-workspace-panels';
 const DEFAULT_WORKSPACE_PANELS = { inbox: false, planner: false, board: true };
@@ -68,6 +69,7 @@ const WorkspacePlaceholder = ({ title, text, actionLabel, onAction }) => (
 
 function App() {
   const { user, isLoading: isAuthLoading, checkSession, signOut } = useAuthStore();
+  const requestConfirm = useConfirmStore((state) => state.requestConfirm);
   const {
     boards = [],
     publicBoards = [],
@@ -77,6 +79,7 @@ function App() {
     boardViewError,
     setCurrentBoard,
     createBoard,
+    deleteBoard,
     fetchBoards,
     openBoardByShareId,
     isLoading,
@@ -210,6 +213,19 @@ function App() {
   const handleSelectBoard = async (boardId) => {
     await setCurrentBoard(boardId);
     setIsBoardPickerOpen(false);
+  };
+
+  const handleDeleteBoard = async (board) => {
+    if (!board?.id || !user?.id || board.user_id !== user.id) return;
+
+    const confirmed = await requestConfirm({
+      title: 'Удалить доску',
+      message: `Доска "${board.title}" будет удалена без возможности восстановления.`,
+    });
+
+    if (!confirmed) return;
+
+    await deleteBoard(board.id);
   };
 
   const toggleWorkspacePanel = (panelKey) => {
@@ -373,18 +389,32 @@ function App() {
                   <div className="rounded-2xl border border-white/10 bg-white/7 px-4 py-4 text-sm text-white/78">Загрузка...</div>
                 ) : privateBoards.length ? (
                   privateBoards.map((board) => (
-                    <button
+                    <div
                       key={board.id}
-                      onClick={() => handleSelectBoard(board.id)}
-                      className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                      className={`flex items-center gap-3 rounded-2xl border px-4 py-3 transition ${
                         currentBoardId === board.id
                           ? 'border-blue-400/50 bg-blue-500/16 text-white'
                           : 'border-white/10 bg-white/7 text-white/86 hover:bg-white/10 hover:text-white'
                       }`}
                     >
-                      <span className={`h-2.5 w-2.5 rounded-full ${currentBoardId === board.id ? 'bg-emerald-400' : 'bg-white/28'}`} />
-                      <span className="truncate text-sm font-semibold">{board.title}</span>
-                    </button>
+                      <button type="button" onClick={() => handleSelectBoard(board.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                        <span className={`h-2.5 w-2.5 rounded-full ${currentBoardId === board.id ? 'bg-emerald-400' : 'bg-white/28'}`} />
+                        <span className="truncate text-sm font-semibold">{board.title}</span>
+                      </button>
+                      {board.user_id === user?.id ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteBoard(board);
+                          }}
+                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-rose-300/30 bg-rose-500/10 text-rose-200 transition hover:bg-rose-500/20 hover:text-white"
+                          aria-label={`Удалить доску ${board.title}`}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      ) : null}
+                    </div>
                   ))
                 ) : (
                   <div className="rounded-2xl border border-dashed border-white/10 bg-white/4 px-4 py-5 text-sm text-white/45">

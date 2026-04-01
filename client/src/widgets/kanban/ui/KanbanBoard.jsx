@@ -34,6 +34,7 @@ export const KanbanBoard = ({ showInbox = true, inboxOnly = false, showHeader = 
     moveTaskToInbox,
     moveInboxIdeaToColumn,
     addColumn,
+    deleteBoard,
     publishCurrentBoard,
     shareCurrentBoard,
     inviteBoardMember,
@@ -183,6 +184,7 @@ export const KanbanBoard = ({ showInbox = true, inboxOnly = false, showHeader = 
       onPublish={handlePublishBoard}
       onShare={handleShareBoard}
       onInvite={() => setIsInviteModalOpen(true)}
+      onDeleteBoard={() => deleteBoard(currentBoardId)}
       onRemoveMember={(email) => removeBoardMember(currentBoardId, email)}
       onLeaveBoard={() => leaveBoard(currentBoardId)}
       shareFeedback={shareFeedback}
