@@ -72,6 +72,13 @@ const isMissingColumnFieldError = (error, fieldName) => {
   return errorText.includes(String(fieldName).toLowerCase());
 };
 
+const isMissingBoardFieldError = (error, fieldName) => {
+  if (!error || !fieldName) return false;
+
+  const errorText = `${error.code || ''} ${error.message || ''} ${error.details || ''} ${error.hint || ''}`.toLowerCase();
+  return errorText.includes(String(fieldName).toLowerCase()) && errorText.includes('board');
+};
+
 const withoutColorField = (payload) => {
   if (!payload || !Object.prototype.hasOwnProperty.call(payload, 'color')) return payload;
   const { color, ...rest } = payload;
@@ -149,6 +156,49 @@ const mergeBoardIntoCollection = (collection, board, predicate = () => true) => 
   if (!board) return collection;
   const filtered = (collection || []).filter((item) => item.id !== board.id);
   return predicate(board) ? [...filtered, board] : filtered;
+};
+
+const insertBoardRecord = async (payload) => {
+  const result = await supabase.from('boards').insert([payload]).select().single();
+
+  if (!result.error || !isMissingBoardFieldError(result.error, 'owner_email')) {
+    return result;
+  }
+
+  return supabase.from('boards').insert([withoutField(payload, 'owner_email')]).select().single();
+};
+
+const syncBoardOwnerEmail = async (board, user) => {
+  const normalizedOwnerEmail = normalizeEmail(user?.email);
+
+  if (!board?.id || !user?.id || board.user_id !== user.id || !normalizedOwnerEmail) {
+    return board;
+  }
+
+  if (normalizeEmail(board.owner_email) === normalizedOwnerEmail) {
+    return board;
+  }
+
+  const { data, error } = await supabase
+    .from('boards')
+    .update({ owner_email: normalizedOwnerEmail })
+    .eq('id', board.id)
+    .eq('user_id', user.id)
+    .select()
+    .single();
+
+  if (!error && data) {
+    return data;
+  }
+
+  if (isMissingBoardFieldError(error, 'owner_email')) {
+    return {
+      ...board,
+      owner_email: normalizedOwnerEmail,
+    };
+  }
+
+  return board;
 };
 
 const fetchBoardMembersFromDb = async (boardId) => {
@@ -448,7 +498,7 @@ export const useBoardStore = create((set, get) => ({
     if (!silent) set({ isLoading: true, boardViewError: '' });
 
     try {
-      const board = providedBoard || (await fetchBoardRecordById(boardId));
+      let board = providedBoard || (await fetchBoardRecordById(boardId));
 
       if (!board) {
         removeRealtimeChannel();
@@ -465,6 +515,8 @@ export const useBoardStore = create((set, get) => ({
         });
         return null;
       }
+
+      board = await syncBoardOwnerEmail(board, user);
 
       const boardMembers = await fetchBoardMembersFromDb(board.id);
       const currentBoardAccess = getBoardAccess(board, boardMembers, user);
@@ -1158,11 +1210,12 @@ export const useBoardStore = create((set, get) => ({
       const user = await getAuthenticatedUser();
       if (!user) return;
 
-      const { data: board, error } = await supabase
-        .from('boards')
-        .insert([{ title, user_id: user.id, is_public: isPublic }])
-        .select()
-        .single();
+      const { data: board, error } = await insertBoardRecord({
+        title,
+        user_id: user.id,
+        is_public: isPublic,
+        owner_email: normalizeEmail(user.email) || null,
+      });
 
       if (error) throw error;
       if (!board) return;

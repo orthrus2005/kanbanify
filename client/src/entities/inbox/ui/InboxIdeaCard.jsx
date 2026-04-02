@@ -74,6 +74,7 @@ export const InboxIdeaCard = ({ idea, showArchived = false, isOverlay = false, d
   });
 
   const menuRef = useRef(null);
+  const menuButtonRef = useRef(null);
   const modalRef = useRef(null);
   const fileInputRef = useRef(null);
   const dragFlagRef = useRef(false);
@@ -104,7 +105,9 @@ export const InboxIdeaCard = ({ idea, showArchived = false, isOverlay = false, d
   useEffect(() => {
     if (!isMenuOpen) return undefined;
     const handleOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) setIsMenuOpen(false);
+      const isInsideMenu = menuRef.current?.contains(event.target);
+      const isInsideButton = menuButtonRef.current?.contains(event.target);
+      if (!isInsideMenu && !isInsideButton) setIsMenuOpen(false);
     };
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
@@ -145,6 +148,26 @@ export const InboxIdeaCard = ({ idea, showArchived = false, isOverlay = false, d
       cancelled = true;
     };
   }, [isModalOpen, idea.id, fetchInboxLabels, fetchInboxComments, fetchInboxAttachments]);
+
+  const getMenuStyle = () => {
+    if (typeof window === 'undefined') return {};
+
+    const rect = menuButtonRef.current?.getBoundingClientRect();
+    if (!rect) return {};
+
+    const width = 192;
+    const gap = 8;
+    const left = Math.min(Math.max(12, rect.right - width), window.innerWidth - width - 12);
+    const top = Math.min(rect.bottom + gap, window.innerHeight - 120);
+
+    return {
+      position: 'fixed',
+      top: `${top}px`,
+      left: `${left}px`,
+      width: `${width}px`,
+      zIndex: 5200,
+    };
+  };
 
   const style = {
     transform: isOverlay ? undefined : CSS.Translate.toString(transform),
@@ -374,8 +397,8 @@ export const InboxIdeaCard = ({ idea, showArchived = false, isOverlay = false, d
         className={`kb-card kb-card--inbox group relative ${isMenuOpen ? 'z-[220]' : 'z-[1]'} ${isOverlay ? 'kb-card--overlay' : ''}`}
       >
         {!isOverlay ? (
-          <div ref={menuRef} className="absolute right-2 top-2 z-[260]">
-            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsMenuOpen((value) => !value); }} className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 opacity-100 transition hover:bg-white/10 hover:text-white">
+          <div className="absolute right-2 top-2 z-[260]">
+            <button ref={menuButtonRef} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsMenuOpen((value) => !value); }} className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 opacity-100 transition hover:bg-white/10 hover:text-white">
               <MoreHorizontal size={16} />
             </button>
             {isMenuOpen ? (
